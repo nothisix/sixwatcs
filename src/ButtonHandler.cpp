@@ -27,6 +27,11 @@ void ButtonHandler::begin() {
   Serial.printf("[Input] Button initialized on GPIO %d (Active LOW, INPUT_PULLUP)\n", _pin);
 }
 
+void ButtonHandler::reconfigure(uint8_t pin) {
+  _pin = pin;
+  begin();
+}
+
 ButtonEvent ButtonHandler::update() {
   unsigned long now = millis();
   
@@ -97,6 +102,12 @@ void InputManager::begin() {
   _btnLeft.begin();
   _btnOk.begin();
   _btnRight.begin();
+}
+
+void InputManager::reconfigure(uint8_t pinLeft, uint8_t pinOk, uint8_t pinRight) {
+  _btnLeft.reconfigure(pinLeft);
+  _btnOk.reconfigure(pinOk);
+  _btnRight.reconfigure(pinRight);
 }
 
 ButtonEvent InputManager::update() {

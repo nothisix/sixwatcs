@@ -6,6 +6,7 @@
 #include "Bitmaps.h"
 #include "ClockManager.h"
 #include "MusicManager.h"
+#include "SettingsManager.h"
 
 // Include Minigames
 #include "games/GameFlappy.h"
@@ -20,7 +21,7 @@
 #include "games/GameDodge.h"
 
 // Hardware instances: 3-Button Controller (Left=GPIO 0, OK=GPIO 3, Right=GPIO 1)
-static InputManager inputManager(PIN_BTN_LEFT, PIN_BTN_OK, PIN_BTN_RIGHT);
+InputManager inputManager(PIN_BTN_LEFT, PIN_BTN_OK, PIN_BTN_RIGHT);
 static Engine engine;
 
 // Non-blocking frame timing
@@ -93,11 +94,20 @@ void setup() {
   Serial.println("\n\n========================================");
   Serial.println("  ESP32-C3 3-BUTTON ARCADE & BLE WATCH");
   Serial.println("========================================");
-  Serial.printf("[Pins] LEFT=GPIO %d, OK=GPIO %d, RIGHT=GPIO %d\n", PIN_BTN_LEFT, PIN_BTN_OK, PIN_BTN_RIGHT);
-  Serial.printf("[Pins] OLED SDA=GPIO %d, SCL=GPIO %d\n", PIN_I2C_SDA, PIN_I2C_SCL);
 
-  // Initialize Hardware I2C Display (SDA=GPIO 4, SCL=GPIO 5)
-  Display::init();
+  // Load custom pins & styles from NVS
+  SettingsManager::begin();
+  Serial.printf("[Pins] LEFT=GPIO %d, OK=GPIO %d, RIGHT=GPIO %d\n", 
+                SettingsManager::getBtnLeftPin(), 
+                SettingsManager::getBtnOkPin(), 
+                SettingsManager::getBtnRightPin());
+  Serial.printf("[Pins] OLED SDA=GPIO %d, SCL=GPIO %d\n", 
+                SettingsManager::getSdaPin(), 
+                SettingsManager::getSclPin());
+
+  // Initialize Hardware I2C Display (Configured SDA & SCL)
+  Display::init(SettingsManager::getSdaPin(), SettingsManager::getSclPin());
+  SettingsManager::applyDisplaySettings();
 
   // Initialize Engine & Preferences (NVS High Scores)
   engine.begin();
@@ -130,8 +140,9 @@ void setup() {
   showBootSplash();
 
   // Initialize physical 3-button inputs AFTER splash
-  inputManager.begin();
-  Serial.println("[Input] 3 Buttons initialized (LEFT=0, OK=3, RIGHT=1).");
+  inputManager.reconfigure(SettingsManager::getBtnLeftPin(), SettingsManager::getBtnOkPin(), SettingsManager::getBtnRightPin());
+  Serial.printf("[Input] 3 Buttons initialized (LEFT=%d, OK=%d, RIGHT=%d).\n",
+                SettingsManager::getBtnLeftPin(), SettingsManager::getBtnOkPin(), SettingsManager::getBtnRightPin());
 
   Serial.println("[Engine] System ready, entering main loop!");
 }

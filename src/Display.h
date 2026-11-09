@@ -9,7 +9,8 @@
 extern U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2;
 
 namespace Display {
-  void init();
+  void init(uint8_t sda = PIN_I2C_SDA, uint8_t scl = PIN_I2C_SCL);
+  void reinit(uint8_t sda, uint8_t scl);
   void clear();
   void render();
 

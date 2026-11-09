@@ -5,10 +5,11 @@ U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, /* reset=*/ U8X8_PIN_NONE);
 
 namespace Display {
 
-void init() {
-  Serial.println("[Display] Initializing SSD1306 Hardware I2C Display...");
+void init(uint8_t sda, uint8_t scl) {
+  Serial.printf("[Display] Initializing SSD1306 Hardware I2C Display (SDA=%d, SCL=%d)...\n", sda, scl);
   delay(100); // Allow OLED power rail to stabilize after MCU reset
-  Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
+  Wire.end();
+  Wire.begin(sda, scl);
   Wire.setClock(100000); // 100kHz Standard Safe Mode for crystal-clear signal integrity
   
   u8g2.begin();
@@ -20,6 +21,10 @@ void init() {
   u8g2.clearBuffer();
   u8g2.sendBuffer();
   Serial.println("[Display] u8g2.begin() successfully completed with SSD1306 Hardware I2C!");
+}
+
+void reinit(uint8_t sda, uint8_t scl) {
+  init(sda, scl);
 }
 
 void clear() {

@@ -4,6 +4,7 @@
 #include "Bitmaps.h"
 #include "ClockManager.h"
 #include "Engine.h"
+#include "SettingsManager.h"
 
 MusicSource MusicManager::s_source = MUSIC_SRC_NONE;
 String MusicManager::s_title = "";
@@ -254,6 +255,9 @@ void MusicManager::parseSerialCommand(const String& line) {
       uint8_t b4 = eqStr.substring(c4 + 1).toInt();
       setEqualizer(b0, b1, b2, b3, b4);
     }
+  } else if (SettingsManager::processSerialCommand(line)) {
+    // Config command handled by SettingsManager
+    return;
   } else if (line.equalsIgnoreCase("PING")) {
     Serial.println("[ESP32] PONG");
   }
@@ -384,6 +388,239 @@ void MusicManager::updateUI(ButtonEvent event) {
 }
 
 void MusicManager::renderMusicScreen() {
+  uint8_t style = SettingsManager::getSpotifyStyle();
+  bool lyricsEnabled = SettingsManager::isLyricsEnabled();
+
+  // =========================================================================
+  // STYLE 1: RETRO CASSETTE TAPE
+  // =========================================================================
+  if (style == 1) {
+    u8g2.clearBuffer();
+    // Outer Cassette Shell
+    u8g2.drawRFrame(4, 2, 120, 42, 3);
+    // Inner window / cutout
+    u8g2.drawFrame(18, 9, 92, 28);
+
+    // Left Spool at (36, 23)
+    u8g2.drawCircle(36, 23, 7);
+    u8g2.drawCircle(36, 23, 2);
+    // Right Spool at (92, 23)
+    u8g2.drawCircle(92, 23, 7);
+    u8g2.drawCircle(92, 23, 2);
+
+    // If playing, animate rotating spokes on both spools!
+    if (s_isPlaying) {
+      float a = (millis() % 800) * 0.00785f;
+      int16_t dx = (int16_t)roundf(cosf(a) * 5.0f);
+      int16_t dy = (int16_t)roundf(sinf(a) * 5.0f);
+      u8g2.drawLine(36 - dx, 23 - dy, 36 + dx, 23 + dy);
+      u8g2.drawLine(36 + dy, 23 - dx, 36 - dy, 23 + dx);
+
+      u8g2.drawLine(92 - dx, 23 - dy, 92 + dx, 23 + dy);
+      u8g2.drawLine(92 + dy, 23 - dx, 92 - dy, 23 + dx);
+    } else {
+      u8g2.drawLine(31, 23, 41, 23);
+      u8g2.drawLine(36, 18, 36, 28);
+      u8g2.drawLine(87, 23, 97, 23);
+      u8g2.drawLine(92, 18, 92, 28);
+    }
+
+    // Center tape window: Mini tape counter
+    u8g2.drawFrame(48, 14, 32, 18);
+    u8g2.setFont(u8g2_font_4x6_tf);
+    if (s_isPlaying) {
+      char ctr[10];
+      snprintf(ctr, sizeof(ctr), "%02d:%02d", (int)((millis() / 60000) % 60), (int)((millis() / 1000) % 60));
+      u8g2.drawStr(51, 25, ctr);
+    } else {
+      u8g2.drawStr(52, 25, "PAUSE");
+    }
+
+    // Cassette Top Label: Song Title
+    u8g2.setFont(u8g2_font_4x6_tf);
+    String fullTrack = hasActiveTrack() ? (s_title + " - " + s_artist) : "NO TRACK PLAYING";
+    fullTrack = Display::truncateUTF8(fullTrack, 110);
+    Display::drawCenteredStr(7, fullTrack.c_str());
+
+    // Bottom Area (y=46..64): Lyric Line or Artist
+    u8g2.drawHLine(4, 46, SCREEN_WIDTH - 8);
+    if (lyricsEnabled && s_lyricLine.length() > 0) {
+      bool isHangul = Display::hasHangul(s_lyricLine);
+      if (isHangul) u8g2.setFont(u8g2_font_gulim11_t_korean2);
+      else u8g2.setFont(u8g2_font_5x7_tf);
+      String lyrCut = Display::truncateUTF8(s_lyricLine, 120);
+      Display::drawCenteredStr(56, lyrCut.c_str());
+    } else {
+      u8g2.setFont(u8g2_font_4x6_tf);
+      if (hasActiveTrack()) {
+        Display::drawCenteredStr(55, s_artist.c_str());
+      } else {
+        Display::drawCenteredStr(55, "PUTAR LAGU DI HP / PC");
+      }
+    }
+
+    // Mini bottom hint
+    u8g2.setFont(u8g2_font_4x6_tf);
+    Display::drawCenteredStr(63, "L:PREV | OK:PAUSE | R:NEXT");
+
+    u8g2.sendBuffer();
+    return;
+  }
+
+  // =========================================================================
+  // STYLE 2: BIG LYRICS FOCUS (KARAOKE MODE)
+  // =========================================================================
+  if (style == 2) {
+    u8g2.clearBuffer();
+    // Slim header (y=0..10)
+    u8g2.setFont(u8g2_font_4x6_tf);
+    String titleCut = hasActiveTrack() ? s_title : "KARAOKE HUD";
+    if (titleCut.length() > 18) titleCut = titleCut.substring(0, 18);
+    u8g2.drawStr(4, 8, titleCut.c_str());
+
+    char timeBuf[16];
+    ClockManager::getTimeString(timeBuf, sizeof(timeBuf));
+    timeBuf[5] = '\0';
+    Display::drawRightAlignedStr(SCREEN_WIDTH - 4, 8, timeBuf);
+    u8g2.drawHLine(2, 10, SCREEN_WIDTH - 4);
+
+    // Flanking equalizer bars on left & right
+    for (int i = 0; i < 3; i++) {
+      uint8_t h = s_eqHeights[i];
+      if (h < 1) h = 1;
+      if (h > 12) h = 12;
+      u8g2.drawBox(2 + (i * 4), 38 - h, 2, h);
+      u8g2.drawBox(118 + (i * 4), 38 - h, 2, h);
+    }
+
+    // Main prominent lyric line (y=14..44)
+    if (!hasActiveTrack()) {
+      u8g2.setFont(u8g2_font_5x7_tf);
+      Display::drawCenteredStr(32, "WAITING FOR MUSIC...");
+    } else if (lyricsEnabled && s_lyricLine.length() > 0) {
+      bool isHangul = Display::hasHangul(s_lyricLine);
+      if (isHangul) u8g2.setFont(u8g2_font_gulim12_t_korean2);
+      else u8g2.setFont(u8g2_font_7x14B_tf);
+
+      int16_t lineW = u8g2.getUTF8Width(s_lyricLine.c_str());
+      if (lineW <= 98) {
+        Display::drawCenteredStr(30, s_lyricLine.c_str());
+      } else {
+        u8g2.setClipWindow(16, 14, 112, 34);
+        u8g2.drawUTF8(16 - (int16_t)s_smoothLyricOffset, 30, s_lyricLine.c_str());
+        u8g2.setMaxClipWindow();
+      }
+
+      // Next lyric preview below
+      if (s_nextLyricLine.length() > 0) {
+        if (isHangul) u8g2.setFont(u8g2_font_gulim11_t_korean2);
+        else u8g2.setFont(u8g2_font_5x7_tf);
+        String nextCut = "> " + s_nextLyricLine;
+        nextCut = Display::truncateUTF8(nextCut, 100);
+        Display::drawCenteredStr(45, nextCut.c_str());
+      }
+    } else {
+      u8g2.setFont(u8g2_font_7x14B_tf);
+      Display::drawCenteredStr(28, s_isPlaying ? "PLAYING" : "PAUSED");
+      u8g2.setFont(u8g2_font_5x7_tf);
+      Display::drawCenteredStr(42, s_artist.c_str());
+    }
+
+    // Bottom progress line (y=56..63)
+    u8g2.drawHLine(2, 54, SCREEN_WIDTH - 4);
+    uint32_t localElapsed = s_packetElapsedMs;
+    if (s_isPlaying && millis() > s_packetArrivalMs) {
+      localElapsed += (millis() - s_packetArrivalMs);
+    }
+    float rawProg = (float)localElapsed / (float)s_lineDurationMs;
+    if (rawProg < 0.0f) rawProg = 0.0f;
+    if (rawProg > 1.0f) rawProg = 1.0f;
+    int16_t barW = (int16_t)(rawProg * 120.0f);
+    u8g2.drawFrame(4, 57, 120, 4);
+    if (barW > 0) u8g2.drawBox(4, 57, barW, 4);
+
+    u8g2.sendBuffer();
+    return;
+  }
+
+  // =========================================================================
+  // STYLE 3: COMPACT VINYL / PLAYER
+  // =========================================================================
+  if (style == 3) {
+    u8g2.clearBuffer();
+    // Left side: Vinyl Disc at (24, 32), radius 22
+    u8g2.drawCircle(24, 32, 22);
+    u8g2.drawCircle(24, 32, 17);
+    u8g2.drawCircle(24, 32, 12);
+    u8g2.drawDisc(24, 32, 7);
+    u8g2.setDrawColor(0);
+    u8g2.drawCircle(24, 32, 2);
+    u8g2.setDrawColor(1);
+
+    // If playing, draw rotating groove notch
+    if (s_isPlaying) {
+      float a = (millis() % 1200) * 0.005236f;
+      int16_t gx = 24 + (int16_t)roundf(cosf(a) * 14.0f);
+      int16_t gy = 32 + (int16_t)roundf(sinf(a) * 14.0f);
+      u8g2.drawDisc(gx, gy, 1);
+    }
+
+    // Right Side Player (x=50..126)
+    u8g2.setFont(u8g2_font_4x6_tf);
+    String app = s_appName.length() > 0 ? s_appName : "SPOTIFY";
+    app.toUpperCase();
+    u8g2.drawStr(52, 9, app.c_str());
+    Display::drawRightAlignedStr(SCREEN_WIDTH - 2, 9, s_isPlaying ? "▶ PLAY" : "❚❚ PAUSE");
+
+    u8g2.drawHLine(50, 12, 76);
+
+    // Song Title (Bold)
+    u8g2.setFont(u8g2_font_5x7_tf);
+    String titleCut = hasActiveTrack() ? s_title : "NO TRACK";
+    titleCut = Display::truncateUTF8(titleCut, 74);
+    u8g2.drawStr(52, 22, titleCut.c_str());
+
+    // Artist
+    u8g2.setFont(u8g2_font_4x6_tf);
+    String artCut = hasActiveTrack() ? s_artist : "STANDBY";
+    artCut = Display::truncateUTF8(artCut, 74);
+    u8g2.drawStr(52, 31, artCut.c_str());
+
+    // Progress Bar
+    u8g2.drawFrame(52, 36, 72, 4);
+    uint32_t localElapsed = s_packetElapsedMs;
+    if (s_isPlaying && millis() > s_packetArrivalMs) {
+      localElapsed += (millis() - s_packetArrivalMs);
+    }
+    float rawProg = (float)localElapsed / (float)s_lineDurationMs;
+    if (rawProg < 0.0f) rawProg = 0.0f;
+    if (rawProg > 1.0f) rawProg = 1.0f;
+    int16_t progW = (int16_t)(rawProg * 72.0f);
+    if (progW > 0) u8g2.drawBox(52, 36, progW, 4);
+
+    // Bottom: 1-line lyric ticker or control hint
+    u8g2.drawHLine(50, 44, 76);
+    if (lyricsEnabled && s_lyricLine.length() > 0) {
+      bool isHangul = Display::hasHangul(s_lyricLine);
+      if (isHangul) u8g2.setFont(u8g2_font_gulim11_t_korean2);
+      else u8g2.setFont(u8g2_font_4x6_tf);
+      String lyrCut = Display::truncateUTF8(s_lyricLine, 74);
+      u8g2.drawStr(52, 53, lyrCut.c_str());
+    } else {
+      u8g2.setFont(u8g2_font_4x6_tf);
+      u8g2.drawStr(52, 53, "L:PREV | OK | R:NEXT");
+    }
+
+    u8g2.setFont(u8g2_font_4x6_tf);
+    Display::drawRightAlignedStr(SCREEN_WIDTH - 2, 62, "VINYL MODE");
+
+    u8g2.sendBuffer();
+    return;
+  }
+
+  // =========================================================================
+  // STYLE 0: CLASSIC HUD (DEFAULT)
+  // =========================================================================
   u8g2.clearBuffer();
 
   // Outer border
@@ -462,6 +699,15 @@ void MusicManager::renderMusicScreen() {
     u8g2.drawXBMP(58, 27, BITMAP_MUSIC_WIDTH, BITMAP_MUSIC_HEIGHT, BITMAP_MUSIC);
     u8g2.setFont(u8g2_font_4x6_tf);
     Display::drawCenteredStr(46, "PUTAR LAGU DI SPOTIFY");
+  } else if (!lyricsEnabled) {
+    for (int i = 0; i < 9; i++) {
+      uint8_t h = (i % 2 == 0) ? s_eqHeights[i % 5] : (s_eqHeights[(i + 2) % 5] + 2);
+      if (h < 2) h = 2;
+      if (h > 16) h = 16;
+      u8g2.drawBox(20 + (i * 10), 44 - h, 6, h);
+    }
+    u8g2.setFont(u8g2_font_4x6_tf);
+    Display::drawCenteredStr(49, s_isPlaying ? "VISUALIZER MODE" : "[PAUSED]");
   } else if (s_lyricLine.length() == 0) {
     // Song is active but lyric has not loaded / instrumental / pause
     u8g2.drawXBMP(58, 25, BITMAP_MUSIC_WIDTH, BITMAP_MUSIC_HEIGHT, BITMAP_MUSIC);

@@ -29,6 +29,7 @@ public:
   explicit ButtonHandler(uint8_t pin = PIN_BUTTON);
 
   void begin();
+  void reconfigure(uint8_t pin);
   ButtonEvent update();
 
   // Helper inspection methods
@@ -56,6 +57,7 @@ public:
                uint8_t pinRight = PIN_BTN_RIGHT);
 
   void begin();
+  void reconfigure(uint8_t pinLeft, uint8_t pinOk, uint8_t pinRight);
   ButtonEvent update();
 
   bool isAnyDown() const;

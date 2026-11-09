@@ -315,10 +315,14 @@ void ClockManager::renderWatchFace() {
   getDayString(dayBuf, sizeof(dayBuf));
   getDateString(dateBuf, sizeof(dateBuf));
 
+  int hour = (timeBuf[0] - '0') * 10 + (timeBuf[1] - '0');
+  int minute = (timeBuf[3] - '0') * 10 + (timeBuf[4] - '0');
+  int second = (timeBuf[6] - '0') * 10 + (timeBuf[7] - '0');
+
+  // =========================================================================
+  // STYLE 1: MINIMAL WATCH FACE
+  // =========================================================================
   if (style == 1) {
-    // =========================================================================
-    // MINIMAL WATCH FACE
-    // =========================================================================
     u8g2.setFont(u8g2_font_logisoso20_tn);
     char hhmm[8];
     hhmm[0] = timeBuf[0];
@@ -332,7 +336,7 @@ void ClockManager::renderWatchFace() {
     u8g2.drawStr(startX, 36, hhmm);
 
     char ss[6];
-    snprintf(ss, sizeof(ss), ":%c%c", timeBuf[6], timeBuf[7]);
+    snprintf(ss, sizeof(ss), ":%02d", second);
     u8g2.setFont(u8g2_font_6x12_tf);
     u8g2.drawStr(startX + timeW + 4, 30, ss);
 
@@ -341,7 +345,7 @@ void ClockManager::renderWatchFace() {
     u8g2.setFont(u8g2_font_5x7_tf);
     Display::drawCenteredStr(48, fullDate);
 
-    // Indicator
+    // Subtle status indicator
     if (s_bleConnected) {
       u8g2.drawDisc(SCREEN_WIDTH - 6, 6, 2);
     } else {
@@ -354,6 +358,206 @@ void ClockManager::renderWatchFace() {
       } else {
         Display::drawCenteredStr(58, "Chronos ESP32");
       }
+    }
+
+    u8g2.sendBuffer();
+    return;
+  }
+
+  // =========================================================================
+  // STYLE 2: ANALOG WATCH FACE
+  // =========================================================================
+  if (style == 2) {
+    int16_t cx = 32;
+    int16_t cy = 32;
+    int16_t r = 29;
+
+    // Dial outer ring
+    u8g2.drawCircle(cx, cy, r);
+    u8g2.drawCircle(cx, cy, r - 1);
+
+    // 12 Hour Ticks
+    for (int h = 0; h < 12; h++) {
+      float a = h * 30.0f * 0.0174532925f;
+      float sinA = sinf(a);
+      float cosA = cosf(a);
+      int16_t len = (h % 3 == 0) ? 5 : 2;
+      int16_t x0 = cx + (int16_t)roundf(sinA * (r - 2));
+      int16_t y0 = cy - (int16_t)roundf(cosA * (r - 2));
+      int16_t x1 = cx + (int16_t)roundf(sinA * (r - 2 - len));
+      int16_t y1 = cy - (int16_t)roundf(cosA * (r - 2 - len));
+      u8g2.drawLine(x0, y0, x1, y1);
+    }
+
+    // Minute Hand (length 20)
+    float mAngle = (minute * 6.0f + second * 0.1f) * 0.0174532925f;
+    int16_t mx = cx + (int16_t)roundf(sinf(mAngle) * 20.0f);
+    int16_t my = cy - (int16_t)roundf(cosf(mAngle) * 20.0f);
+    u8g2.drawLine(cx, cy, mx, my);
+
+    // Hour Hand (length 13, bold)
+    float hAngle = ((hour % 12) * 30.0f + minute * 0.5f) * 0.0174532925f;
+    int16_t hx = cx + (int16_t)roundf(sinf(hAngle) * 13.0f);
+    int16_t hy = cy - (int16_t)roundf(cosf(hAngle) * 13.0f);
+    u8g2.drawLine(cx, cy, hx, hy);
+    u8g2.drawLine(cx + 1, cy, hx + 1, hy);
+
+    // Center pin
+    u8g2.drawDisc(cx, cy, 2);
+
+    // Right Info Panel
+    u8g2.setFont(u8g2_font_4x6_tf);
+    if (s_bleConnected) {
+      if (s_phoneBattery > 0) {
+        char batBuf[16];
+        snprintf(batBuf, sizeof(batBuf), "%s%d%%", s_phoneCharging ? "CHG:" : "BAT:", s_phoneBattery);
+        u8g2.drawStr(66, 10, batBuf);
+      } else {
+        u8g2.drawStr(66, 10, "BLE SYNC");
+      }
+    } else {
+      u8g2.drawStr(66, 10, "STANDBY");
+    }
+
+    // Digital Time Box
+    u8g2.drawRFrame(65, 15, 60, 20, 2);
+    u8g2.setFont(u8g2_font_7x14B_tf);
+    char hhmm[8];
+    snprintf(hhmm, sizeof(hhmm), "%02d%c%02d", hour, ((millis() / 500) % 2 == 0) ? ':' : ' ', minute);
+    u8g2.drawStr(72, 30, hhmm);
+
+    // Inverted Date Badge
+    u8g2.drawBox(65, 38, 60, 11);
+    u8g2.setDrawColor(0);
+    u8g2.setFont(u8g2_font_5x7_tf);
+    char shortDate[16];
+    snprintf(shortDate, sizeof(shortDate), "%s %02d", dayBuf, s_watch.getDay());
+    int16_t sdw = u8g2.getStrWidth(shortDate);
+    u8g2.drawStr(65 + (60 - sdw) / 2, 46, shortDate);
+    u8g2.setDrawColor(1);
+
+    // Seconds ticker / temp
+    u8g2.setFont(u8g2_font_4x6_tf);
+    char secBuf[24];
+    if (s_hasWeather && s_bleConnected) {
+      snprintf(secBuf, sizeof(secBuf), "SEC:%02d | %d C", second, s_weatherTemp);
+    } else {
+      snprintf(secBuf, sizeof(secBuf), "SEC:%02d | SIXWATCS", second);
+    }
+    u8g2.drawStr(65, 60, secBuf);
+
+    u8g2.sendBuffer();
+    return;
+  }
+
+  // =========================================================================
+  // STYLE 3: CYBERPUNK CASIO WATCH FACE
+  // =========================================================================
+  if (style == 3) {
+    u8g2.drawFrame(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
+    u8g2.drawHLine(2, 12, SCREEN_WIDTH - 4);
+    u8g2.drawHLine(2, 48, SCREEN_WIDTH - 4);
+
+    // Inverted title pill
+    u8g2.drawBox(2, 2, 60, 10);
+    u8g2.setDrawColor(0);
+    u8g2.setFont(u8g2_font_4x6_tf);
+    u8g2.drawStr(6, 9, "SIXWATCS C3");
+    u8g2.setDrawColor(1);
+
+    if (s_bleConnected) {
+      char batBuf[16];
+      snprintf(batBuf, sizeof(batBuf), "%s%d%%", s_phoneCharging ? "+" : "", s_phoneBattery > 0 ? s_phoneBattery : 100);
+      Display::drawRightAlignedStr(SCREEN_WIDTH - 4, 9, batBuf);
+    } else {
+      Display::drawRightAlignedStr(SCREEN_WIDTH - 4, 9, "[OFFLINE]");
+    }
+
+    // Days bar: S M T W T F S
+    static const char* dayLetters[] = {"S", "M", "T", "W", "T", "F", "S"};
+    int curDay = s_watch.getDayofWeek();
+    if (curDay < 0 || curDay > 6) curDay = 0;
+    u8g2.setFont(u8g2_font_5x7_tf);
+    for (int d = 0; d < 7; d++) {
+      int16_t bx = 16 + (d * 14);
+      if (d == curDay) {
+        u8g2.drawBox(bx - 2, 14, 11, 9);
+        u8g2.setDrawColor(0);
+        u8g2.drawStr(bx, 21, dayLetters[d]);
+        u8g2.setDrawColor(1);
+      } else {
+        u8g2.drawStr(bx, 21, dayLetters[d]);
+      }
+    }
+
+    // Large Digits
+    u8g2.setFont(u8g2_font_logisoso20_tn);
+    char hhmm[8];
+    snprintf(hhmm, sizeof(hhmm), "%02d%c%02d", hour, ((millis() / 500) % 2 == 0) ? ':' : ' ', minute);
+    u8g2.drawStr(14, 44, hhmm);
+
+    char ss[6];
+    snprintf(ss, sizeof(ss), ":%02d", second);
+    u8g2.setFont(u8g2_font_6x12_tf);
+    u8g2.drawStr(82, 36, ss);
+
+    u8g2.setFont(u8g2_font_4x6_tf);
+    u8g2.drawStr(82, 44, (hour >= 12) ? "PM" : "AM");
+
+    // Dynamic seconds progress bar
+    uint8_t barW = (second * 120) / 59;
+    if (barW > 120) barW = 120;
+    u8g2.drawFrame(4, 51, 120, 3);
+    if (barW > 0) u8g2.drawBox(4, 51, barW, 3);
+
+    // Date footer
+    u8g2.setFont(u8g2_font_4x6_tf);
+    char botLine[32];
+    snprintf(botLine, sizeof(botLine), "%s  %s", dayBuf, dateBuf);
+    Display::drawCenteredStr(61, botLine);
+
+    u8g2.sendBuffer();
+    return;
+  }
+
+  // =========================================================================
+  // STYLE 4: BIG GLANCE / TYPO WATCH FACE
+  // =========================================================================
+  if (style == 4) {
+    char fullDate[32];
+    snprintf(fullDate, sizeof(fullDate), "%s, %s", dayBuf, dateBuf);
+    u8g2.setFont(u8g2_font_5x7_tf);
+    int16_t fdw = u8g2.getStrWidth(fullDate);
+    u8g2.drawRBox((SCREEN_WIDTH - fdw - 12) / 2, 1, fdw + 12, 11, 2);
+    u8g2.setDrawColor(0);
+    Display::drawCenteredStr(9, fullDate);
+    u8g2.setDrawColor(1);
+
+    // Giant Time Display
+    u8g2.setFont(u8g2_font_logisoso24_tn);
+    char hhmm[8];
+    snprintf(hhmm, sizeof(hhmm), "%02d%c%02d", hour, ((millis() / 500) % 2 == 0) ? ':' : ' ', minute);
+    int16_t tw = u8g2.getStrWidth(hhmm);
+    u8g2.drawStr((SCREEN_WIDTH - tw - 18) / 2, 44, hhmm);
+
+    char ss[6];
+    snprintf(ss, sizeof(ss), ":%02d", second);
+    u8g2.setFont(u8g2_font_6x12_tf);
+    u8g2.drawStr((SCREEN_WIDTH - tw - 18) / 2 + tw + 2, 38, ss);
+
+    // Bottom info line
+    u8g2.drawHLine(4, 52, SCREEN_WIDTH - 8);
+    u8g2.setFont(u8g2_font_4x6_tf);
+    if (s_bleConnected) {
+      if (s_phoneBattery > 0) {
+        char batStr[28];
+        snprintf(batStr, sizeof(batStr), "BLE OK • BAT %d%%%s", s_phoneBattery, s_phoneCharging ? " [CHG]" : "");
+        Display::drawCenteredStr(61, batStr);
+      } else {
+        Display::drawCenteredStr(61, "CHRONOS CONNECTED • SYNC OK");
+      }
+    } else {
+      Display::drawCenteredStr(61, "STANDALONE RTC • SIXWATCS");
     }
 
     u8g2.sendBuffer();

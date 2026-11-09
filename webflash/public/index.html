@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SIXWATCS // ESP32-C3 Web Flasher</title>
+  <title>SIXWATCS // ESP32-C3 Web Flasher & Configurator</title>
   <link rel="icon" type="image/png" href="assets/sixwatcs_logo.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -17,6 +17,7 @@
       --card-border: #232838;
       --accent: #00e5ff;
       --accent-glow: rgba(0, 229, 255, 0.25);
+      --accent-green: #00ff88;
       --text: #e6e9f2;
       --text-muted: #8c93a8;
       --btn-grad: linear-gradient(135deg, #00d2ff 0%, #00f2fe 100%);
@@ -112,7 +113,7 @@
     main {
       max-width: 1100px;
       margin: 0 auto;
-      padding: 36px 20px 80px;
+      padding: 24px 20px 80px;
       flex: 1;
       width: 100%;
     }
@@ -122,13 +123,58 @@
       overflow: hidden;
       border: 1px solid var(--card-border);
       box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6);
-      margin-bottom: 36px;
+      margin-bottom: 24px;
       background: #000;
     }
 
     .banner-container img {
       width: 100%;
       height: auto;
+      display: block;
+    }
+
+    /* Tab Navigation */
+    .tab-bar {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 28px;
+      border-bottom: 1px solid var(--card-border);
+      padding-bottom: 14px;
+    }
+
+    .tab-btn {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--card-border);
+      color: var(--text-muted);
+      padding: 12px 24px;
+      border-radius: 10px;
+      font-size: 0.95rem;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: var(--sans);
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .tab-btn:hover {
+      background: rgba(255, 255, 255, 0.08);
+      color: #fff;
+    }
+
+    .tab-btn.active {
+      background: rgba(0, 229, 255, 0.15);
+      border-color: var(--accent);
+      color: var(--accent);
+      box-shadow: 0 0 16px rgba(0, 229, 255, 0.2);
+    }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
       display: block;
     }
 
@@ -150,6 +196,7 @@
       border-radius: 16px;
       padding: 28px;
       box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+      margin-bottom: 24px;
     }
 
     .card-title {
@@ -215,7 +262,6 @@
       gap: 12px;
     }
 
-    /* Custom Web Flasher Button */
     esp-web-install-button {
       --esp-tools-button-border-radius: 10px;
       --esp-tools-button-color: #000;
@@ -341,22 +387,355 @@
       word-break: break-all;
     }
 
-    .wiring-card {
-      margin-top: 28px;
-    }
-
-    .wiring-img-wrap {
+    /* Device Configurator UI Elements */
+    .connection-strip {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 14px;
+      background: rgba(0, 0, 0, 0.4);
+      padding: 16px 20px;
       border-radius: 12px;
-      overflow: hidden;
       border: 1px solid var(--card-border);
-      background: #000;
-      margin-top: 14px;
+      margin-bottom: 24px;
     }
 
-    .wiring-img-wrap img {
-      width: 100%;
-      height: auto;
+    .status-badge {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: var(--mono);
+      font-size: 0.85rem;
+      padding: 6px 14px;
+      border-radius: 999px;
+      border: 1px solid var(--card-border);
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #ff4757;
+      box-shadow: 0 0 8px #ff4757;
+    }
+
+    .status-dot.connected {
+      background: var(--accent-green);
+      box-shadow: 0 0 10px var(--accent-green);
+    }
+
+    .conn-btn-group {
+      display: flex;
+      gap: 10px;
+    }
+
+    .btn-cyber {
+      background: var(--btn-grad);
+      color: #050608;
+      border: none;
+      padding: 10px 20px;
+      font-size: 0.88rem;
+      font-weight: 800;
+      border-radius: 8px;
+      cursor: pointer;
+      font-family: var(--sans);
+      transition: all 0.2s;
+    }
+
+    .btn-cyber:hover:not(:disabled) {
+      box-shadow: 0 0 16px var(--accent-glow);
+      transform: translateY(-1px);
+    }
+
+    .btn-cyber:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    .btn-ghost {
+      background: transparent;
+      color: var(--text-muted);
+      border: 1px solid var(--card-border);
+      padding: 10px 18px;
+      font-size: 0.88rem;
+      font-weight: 600;
+      border-radius: 8px;
+      cursor: pointer;
+      font-family: var(--sans);
+      transition: all 0.2s;
+    }
+
+    .btn-ghost:hover:not(:disabled) {
+      border-color: #fff;
+      color: #fff;
+    }
+
+    .btn-ghost:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    .config-section-title {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: #fff;
+      margin: 24px 0 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .pin-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 14px;
+      margin-bottom: 20px;
+    }
+
+    .pin-box {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      padding: 14px;
+    }
+
+    .pin-box label {
       display: block;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+      font-weight: 600;
+    }
+
+    .pin-select {
+      width: 100%;
+      background: #06070a;
+      border: 1px solid var(--card-border);
+      color: #fff;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-family: var(--mono);
+      font-size: 0.88rem;
+      outline: none;
+    }
+
+    .pin-select:focus {
+      border-color: var(--accent);
+    }
+
+    /* Style Selector Cards */
+    .style-cards-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 14px;
+      margin-bottom: 24px;
+    }
+
+    .style-card {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 16px;
+      cursor: pointer;
+      transition: all 0.2s;
+      position: relative;
+    }
+
+    .style-card:hover {
+      border-color: rgba(0, 229, 255, 0.5);
+      background: rgba(0, 229, 255, 0.03);
+    }
+
+    .style-card.selected {
+      border-color: var(--accent);
+      background: rgba(0, 229, 255, 0.1);
+      box-shadow: 0 0 16px rgba(0, 229, 255, 0.2);
+    }
+
+    .style-card-badge {
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      color: var(--accent);
+      background: rgba(0, 229, 255, 0.15);
+      padding: 2px 8px;
+      border-radius: 4px;
+      display: inline-block;
+      margin-bottom: 8px;
+    }
+
+    .style-card-name {
+      font-weight: 700;
+      font-size: 0.95rem;
+      color: #fff;
+      margin-bottom: 4px;
+    }
+
+    .style-card-desc {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+
+    /* Toggle & Select Rows */
+    .option-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 14px 18px;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      margin-bottom: 12px;
+    }
+
+    .option-info strong {
+      display: block;
+      color: #fff;
+      font-size: 0.92rem;
+    }
+
+    .option-info span {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    /* Switch */
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 46px;
+      height: 24px;
+    }
+
+    .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background-color: #232838;
+      transition: .3s;
+      border-radius: 24px;
+    }
+
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 18px;
+      width: 18px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: .3s;
+      border-radius: 50%;
+    }
+
+    input:checked + .slider {
+      background-color: var(--accent);
+    }
+
+    input:checked + .slider:before {
+      transform: translateX(22px);
+    }
+
+    .save-bar {
+      margin-top: 30px;
+      display: flex;
+      gap: 14px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .btn-save-large {
+      background: var(--btn-grad);
+      color: #06070a;
+      border: none;
+      padding: 16px 36px;
+      font-size: 1.05rem;
+      font-weight: 800;
+      border-radius: 12px;
+      cursor: pointer;
+      font-family: var(--sans);
+      letter-spacing: 0.02em;
+      box-shadow: 0 4px 20px var(--accent-glow);
+      transition: all 0.2s;
+    }
+
+    .btn-save-large:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 28px rgba(0, 229, 255, 0.45);
+    }
+
+    .btn-save-large:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+
+    /* Toast Notification */
+    .toast-box {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      padding: 14px 22px;
+      border-radius: 10px;
+      font-size: 0.92rem;
+      font-weight: 600;
+      background: #12151e;
+      border: 1px solid var(--accent);
+      color: #fff;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.8), 0 0 20px var(--accent-glow);
+      z-index: 100;
+      transform: translateY(100px);
+      opacity: 0;
+      transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+
+    .toast-box.show {
+      transform: translateY(0);
+      opacity: 1;
+    }
+
+    .serial-log-wrap {
+      margin-top: 24px;
+      background: #06070a;
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      padding: 14px;
+    }
+
+    .serial-log-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .serial-log-title {
+      font-size: 0.8rem;
+      font-family: var(--mono);
+      color: var(--text-muted);
+    }
+
+    .serial-log-content {
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      color: #5af78e;
+      height: 110px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+      background: #030406;
+      padding: 8px 10px;
+      border-radius: 6px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
     }
 
     footer {
@@ -392,146 +771,675 @@
       <img src="assets/sixwatcs_banner.png" alt="SIXWATCS Banner">
     </div>
 
-    <div class="grid-layout">
-      <!-- Left Column: Web Flash Action -->
-      <section class="card">
-        <h2 class="card-title">
-          <span class="icon">⚡</span>
-          Online Web Flasher
-        </h2>
-
-        <p style="color: var(--text-muted); font-size: 0.92rem; margin-bottom: 20px;">
-          Flash firmware <strong>SIXWATCS v2.4.0</strong> langsung dari browser tanpa perlu menginstal Python, Arduino IDE, atau driver tambahan.
-        </p>
-
-        <ul class="steps-list">
-          <li class="step-item">
-            <span class="step-num">1</span>
-            <div>
-              <strong>Hubungkan ke USB</strong>: Colokkan board ESP32-C3 SuperMini ke port USB laptop/PC menggunakan kabel data Type-C berkualitas baik.
-            </div>
-          </li>
-          <li class="step-item">
-            <span class="step-num">2</span>
-            <div>
-              <strong>Klik Tombol Flash</strong>: Tekan tombol biru di bawah. Browser akan membuka dialog pilihan port serial.
-            </div>
-          </li>
-          <li class="step-item">
-            <span class="step-num">3</span>
-            <div>
-              <strong>Pilih Port Serial</strong>: Pilih perangkat yang terdeteksi (biasanya <code>USB JTAG/serial debug unit</code> atau <code>COMx</code> / <code>ttyACM0</code>) lalu klik <strong>Connect</strong>.
-            </div>
-          </li>
-          <li class="step-item">
-            <span class="step-num">4</span>
-            <div>
-              <strong>Tunggu Selesai (~35 detik)</strong>: Firmware, bootloader, dan partisi akan dipasang otomatis. Setelah selesai, ESP32-C3 akan reboot dan layar OLED menyala seketika!
-            </div>
-          </li>
-        </ul>
-
-        <!-- The Install Button Container -->
-        <div class="flash-action-box">
-          <esp-web-install-button manifest="manifest.json">
-            <button slot="activate" class="custom-flash-btn">⚡ Connect & Install SIXWATCS</button>
-            <span slot="unsupported">⚠️ Browser kamu belum mendukung Web Serial API. Silakan buka halaman ini di <strong>Google Chrome</strong>, <strong>Microsoft Edge</strong>, atau <strong>Opera</strong> (Desktop).</span>
-            <span slot="not-allowed">⚠️ Web Serial membutuhkan koneksi aman <strong>HTTPS</strong> atau <code>localhost</code>.</span>
-          </esp-web-install-button>
-          <div class="flash-hint">Target Chip: ESP32-C3 (4MB Flash) • Baudrate: 460,800 bps</div>
-        </div>
-
-        <div class="alert-box">
-          <strong>💡 Tips Masuk Bootloader (Jika Gagal Connect):</strong><br>
-          Jika ESP32-C3 tidak terdeteksi atau muncul timeout handshake: Lepas kabel USB, tahan tombol <strong>BOOT (GPIO 9)</strong> pada board SuperMini, colok kembali kabel USB, lalu lepaskan tombol BOOT. Baru klik tombol install di atas.
-        </div>
-      </section>
-
-      <!-- Right Column: Specs & Downloads -->
-      <section class="card">
-        <h2 class="card-title">
-          <span class="icon">📦</span>
-          Informasi Firmware
-        </h2>
-
-        <div class="meta-specs">
-          <div class="spec-row">
-            <span class="spec-label">Versi Rilis</span>
-            <span class="spec-val">v2.4.0 (Latest)</span>
-          </div>
-          <div class="spec-row">
-            <span class="spec-label">Target Board</span>
-            <span class="spec-val">ESP32-C3 SuperMini</span>
-          </div>
-          <div class="spec-row">
-            <span class="spec-label">Arsitektur</span>
-            <span class="spec-val">RISC-V 32-bit (160MHz)</span>
-          </div>
-          <div class="spec-row">
-            <span class="spec-label">Ukuran Flash</span>
-            <span class="spec-val">4MB (DIO 80MHz)</span>
-          </div>
-          <div class="spec-row">
-            <span class="spec-label">Fitur Utama</span>
-            <span class="spec-val">Chronos • Lyrics • Arcade</span>
-          </div>
-        </div>
-
-        <h3 style="font-size: 0.95rem; margin-top: 24px; margin-bottom: 10px; color: #fff;">Unduh Binaries Manual:</h3>
-        <div class="download-list">
-          <a href="firmware.bin" download class="dl-item">
-            <div>
-              <div class="dl-name">firmware.bin</div>
-              <div class="dl-offset">Aplikasi Utama (0x10000)</div>
-            </div>
-            <span>⬇️</span>
-          </a>
-          <a href="bootloader.bin" download class="dl-item">
-            <div>
-              <div class="dl-name">bootloader.bin</div>
-              <div class="dl-offset">Second-Stage Bootloader (0x0000)</div>
-            </div>
-            <span>⬇️</span>
-          </a>
-          <a href="partitions.bin" download class="dl-item">
-            <div>
-              <div class="dl-name">partitions.bin</div>
-              <div class="dl-offset">Partition Table (0x8000)</div>
-            </div>
-            <span>⬇️</span>
-          </a>
-          <a href="boot_app0.bin" download class="dl-item">
-            <div>
-              <div class="dl-name">boot_app0.bin</div>
-              <div class="dl-offset">OTA Data Init (0xE000)</div>
-            </div>
-            <span>⬇️</span>
-          </a>
-        </div>
-
-        <h3 style="font-size: 0.95rem; margin-top: 20px; color: #fff;">Manual Flash via esptool.py:</h3>
-        <div class="code-box">esptool.py --chip esp32c3 --port COM5 write_flash 0x0 bootloader.bin 0x8000 partitions.bin 0xe000 boot_app0.bin 0x10000 firmware.bin</div>
-      </section>
+    <!-- Tab Bar -->
+    <div class="tab-bar">
+      <button class="tab-btn active" onclick="switchTab('flasher')">
+        <span>⚡</span> Web Flasher Firmware
+      </button>
+      <button class="tab-btn" onclick="switchTab('configurator')">
+        <span>⚙️</span> Device Configurator (Web Serial)
+      </button>
     </div>
 
-    <!-- Wiring Diagram Section -->
-    <section class="card wiring-card">
-      <h2 class="card-title">
-        <span class="icon">🔌</span>
-        Skema Wiring Hardware Lengkap
-      </h2>
-      <p style="color: var(--text-muted); font-size: 0.92rem;">
-        Koneksi ESP32-C3 SuperMini dengan Layar OLED SSD1306, 3 Tombol Arcade, Modul Charger TP4056 dengan proteksi DW01A, dan Baterai Li-ion 18650 3.7V.
-      </p>
-      <div class="wiring-img-wrap">
-        <img src="assets/wiring_diagram.png" alt="Skema Wiring SIXWATCS">
+    <!-- TAB 1: WEB FLASHER -->
+    <div id="tab-flasher" class="tab-content active">
+      <div class="grid-layout">
+        <!-- Left Column: Web Flash Action -->
+        <section class="card">
+          <h2 class="card-title">
+            <span class="icon">⚡</span>
+            Online Web Flasher
+          </h2>
+
+          <p style="color: var(--text-muted); font-size: 0.92rem; margin-bottom: 20px;">
+            Flash firmware <strong>SIXWATCS v2.5.0</strong> langsung dari browser tanpa perlu menginstal Python, Arduino IDE, atau driver tambahan.
+          </p>
+
+          <ul class="steps-list">
+            <li class="step-item">
+              <span class="step-num">1</span>
+              <div>
+                <strong>Hubungkan ke USB</strong>: Colokkan board ESP32-C3 SuperMini ke port USB laptop/PC menggunakan kabel data Type-C berkualitas baik.
+              </div>
+            </li>
+            <li class="step-item">
+              <span class="step-num">2</span>
+              <div>
+                <strong>Klik Tombol Flash</strong>: Tekan tombol biru di bawah. Browser akan membuka dialog pilihan port serial.
+              </div>
+            </li>
+            <li class="step-item">
+              <span class="step-num">3</span>
+              <div>
+                <strong>Pilih Port Serial</strong>: Pilih perangkat yang terdeteksi (biasanya <code>USB JTAG/serial debug unit</code> atau <code>COMx</code> / <code>ttyACM0</code>) lalu klik <strong>Connect</strong>.
+              </div>
+            </li>
+            <li class="step-item">
+              <span class="step-num">4</span>
+              <div>
+                <strong>Tunggu Selesai (~35 detik)</strong>: Firmware, bootloader, dan partisi akan dipasang otomatis. Setelah selesai, ESP32-C3 akan reboot dan layar OLED menyala seketika!
+              </div>
+            </li>
+          </ul>
+
+          <!-- The Install Button Container -->
+          <div class="flash-action-box">
+            <esp-web-install-button manifest="manifest.json">
+              <button slot="activate" class="custom-flash-btn">⚡ Connect & Install SIXWATCS</button>
+              <span slot="unsupported">⚠️ Browser kamu belum mendukung Web Serial API. Silakan buka halaman ini di <strong>Google Chrome</strong>, <strong>Microsoft Edge</strong>, atau <strong>Opera</strong> (Desktop).</span>
+              <span slot="not-allowed">⚠️ Web Serial membutuhkan koneksi aman <strong>HTTPS</strong> atau <code>localhost</code>.</span>
+            </esp-web-install-button>
+            <div class="flash-hint">Target Chip: ESP32-C3 (4MB Flash) • Baudrate: 460,800 bps</div>
+          </div>
+
+          <div class="alert-box">
+            <strong>💡 Tips Masuk Bootloader (Jika Gagal Connect):</strong><br>
+            Jika ESP32-C3 tidak terdeteksi atau muncul timeout handshake: Lepas kabel USB, tahan tombol <strong>BOOT (GPIO 9)</strong> pada board SuperMini, colok kembali kabel USB, lalu lepaskan tombol BOOT. Baru klik tombol install di atas.
+          </div>
+        </section>
+
+        <!-- Right Column: Specs & Downloads -->
+        <section class="card">
+          <h2 class="card-title">
+            <span class="icon">📦</span>
+            Informasi Firmware
+          </h2>
+
+          <div class="meta-specs">
+            <div class="spec-row">
+              <span class="spec-label">Versi Rilis</span>
+              <span class="spec-val">v2.5.0 (Latest)</span>
+            </div>
+            <div class="spec-row">
+              <span class="spec-label">Target Board</span>
+              <span class="spec-val">ESP32-C3 SuperMini</span>
+            </div>
+            <div class="spec-row">
+              <span class="spec-label">Arsitektur</span>
+              <span class="spec-val">RISC-V 32-bit (160MHz)</span>
+            </div>
+            <div class="spec-row">
+              <span class="spec-label">Ukuran Flash</span>
+              <span class="spec-val">4MB (DIO 80MHz)</span>
+            </div>
+            <div class="spec-row">
+              <span class="spec-label">Fitur Baru</span>
+              <span class="spec-val">5 Clock & 4 Spotify Styles</span>
+            </div>
+            <div class="spec-row">
+              <span class="spec-label">Konfigurasi</span>
+              <span class="spec-val">Web Serial Live NVS Sync</span>
+            </div>
+          </div>
+
+          <h3 style="font-size: 0.95rem; margin-top: 24px; margin-bottom: 10px; color: #fff;">Unduh Binaries Manual:</h3>
+          <div class="download-list">
+            <a href="firmware.bin" download class="dl-item">
+              <div>
+                <div class="dl-name">firmware.bin</div>
+                <div class="dl-offset">Aplikasi Utama (0x10000)</div>
+              </div>
+              <span>⬇️</span>
+            </a>
+            <a href="bootloader.bin" download class="dl-item">
+              <div>
+                <div class="dl-name">bootloader.bin</div>
+                <div class="dl-offset">Second-Stage Bootloader (0x0000)</div>
+              </div>
+              <span>⬇️</span>
+            </a>
+            <a href="partitions.bin" download class="dl-item">
+              <div>
+                <div class="dl-name">partitions.bin</div>
+                <div class="dl-offset">Partition Table (0x8000)</div>
+              </div>
+              <span>⬇️</span>
+            </a>
+            <a href="boot_app0.bin" download class="dl-item">
+              <div>
+                <div class="dl-name">boot_app0.bin</div>
+                <div class="dl-offset">OTA Data Init (0xE000)</div>
+              </div>
+              <span>⬇️</span>
+            </a>
+          </div>
+
+          <h3 style="font-size: 0.95rem; margin-top: 20px; color: #fff;">Manual Flash via esptool.py:</h3>
+          <div class="code-box">esptool.py --chip esp32c3 --port COM5 write_flash 0x0 bootloader.bin 0x8000 partitions.bin 0xe000 boot_app0.bin 0x10000 firmware.bin</div>
+        </section>
       </div>
-    </section>
+    </div>
+
+    <!-- TAB 2: DEVICE CONFIGURATOR (WEB SERIAL) -->
+    <div id="tab-configurator" class="tab-content">
+      <section class="card">
+        <h2 class="card-title">
+          <span class="icon">⚙️</span>
+          SIXWATCS Device Configurator (Web Serial)
+        </h2>
+        <p style="color: var(--text-muted); font-size: 0.92rem; margin-bottom: 20px;">
+          Konfigurasi pin GPIO hardware, pilihan style jam, layout tampilan Spotify, dan preferensi lirik langsung ke memori internal (NVS) ESP32-C3 tanpa membebani memori kerja device. <strong>Device wajib dicolok via kabel USB Type-C</strong>.
+        </p>
+
+        <!-- Connection Strip -->
+        <div class="connection-strip">
+          <div class="status-badge">
+            <div id="conn-dot" class="status-dot"></div>
+            <span id="conn-text">Belum Terhubung</span>
+          </div>
+
+          <div class="conn-btn-group">
+            <button id="btn-connect" class="btn-cyber" onclick="connectDevice()">
+              ⚡ Colok & Hubungkan Device (USB)
+            </button>
+            <button id="btn-read" class="btn-ghost" onclick="requestDeviceConfig()" disabled>
+              🔄 Baca Ulang
+            </button>
+            <button id="btn-disconnect" class="btn-ghost" onclick="disconnectDevice()" disabled>
+              Putuskan
+            </button>
+          </div>
+        </div>
+
+        <!-- Section 1: Pin Hardware Configuration -->
+        <h3 class="config-section-title">
+          <span>🔌</span> Konfigurasi Pin Hardware (ESP32-C3 SuperMini)
+        </h3>
+        <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 14px;">
+          Sesuaikan jika kamu memakai custom wiring atau board lain. Nilai default sudah sesuai dengan PCB standar SIXWATCS.
+        </p>
+
+        <div class="pin-grid">
+          <div class="pin-box">
+            <label>OLED SDA (Data)</label>
+            <select id="cfg-sda" class="pin-select">
+              <option value="4" selected>GPIO 4 (Default PCB)</option>
+              <option value="0">GPIO 0</option>
+              <option value="1">GPIO 1</option>
+              <option value="2">GPIO 2</option>
+              <option value="3">GPIO 3</option>
+              <option value="5">GPIO 5</option>
+              <option value="6">GPIO 6</option>
+              <option value="7">GPIO 7</option>
+              <option value="8">GPIO 8</option>
+              <option value="10">GPIO 10</option>
+              <option value="20">GPIO 20</option>
+            </select>
+          </div>
+
+          <div class="pin-box">
+            <label>OLED SCL (Clock)</label>
+            <select id="cfg-scl" class="pin-select">
+              <option value="5" selected>GPIO 5 (Default PCB)</option>
+              <option value="0">GPIO 0</option>
+              <option value="1">GPIO 1</option>
+              <option value="2">GPIO 2</option>
+              <option value="3">GPIO 3</option>
+              <option value="4">GPIO 4</option>
+              <option value="6">GPIO 6</option>
+              <option value="7">GPIO 7</option>
+              <option value="8">GPIO 8</option>
+              <option value="10">GPIO 10</option>
+              <option value="20">GPIO 20</option>
+            </select>
+          </div>
+
+          <div class="pin-box">
+            <label>Tombol Kiri (Prev / Left)</label>
+            <select id="cfg-btn-l" class="pin-select">
+              <option value="0" selected>GPIO 0 (Default PCB)</option>
+              <option value="1">GPIO 1</option>
+              <option value="2">GPIO 2</option>
+              <option value="3">GPIO 3</option>
+              <option value="4">GPIO 4</option>
+              <option value="5">GPIO 5</option>
+              <option value="6">GPIO 6</option>
+              <option value="7">GPIO 7</option>
+              <option value="10">GPIO 10</option>
+            </select>
+          </div>
+
+          <div class="pin-box">
+            <label>Tombol OK (Select / Action)</label>
+            <select id="cfg-btn-ok" class="pin-select">
+              <option value="3" selected>GPIO 3 (Default PCB)</option>
+              <option value="0">GPIO 0</option>
+              <option value="1">GPIO 1</option>
+              <option value="2">GPIO 2</option>
+              <option value="4">GPIO 4</option>
+              <option value="5">GPIO 5</option>
+              <option value="6">GPIO 6</option>
+              <option value="7">GPIO 7</option>
+              <option value="10">GPIO 10</option>
+            </select>
+          </div>
+
+          <div class="pin-box">
+            <label>Tombol Kanan (Next / Right)</label>
+            <select id="cfg-btn-r" class="pin-select">
+              <option value="1" selected>GPIO 1 (Default PCB)</option>
+              <option value="0">GPIO 0</option>
+              <option value="2">GPIO 2</option>
+              <option value="3">GPIO 3</option>
+              <option value="4">GPIO 4</option>
+              <option value="5">GPIO 5</option>
+              <option value="6">GPIO 6</option>
+              <option value="7">GPIO 7</option>
+              <option value="10">GPIO 10</option>
+            </select>
+          </div>
+        </div>
+
+        <button class="btn-ghost" style="font-size: 0.82rem; margin-bottom: 24px;" onclick="resetDefaultPins()">
+          ↺ Reset ke Nilai Pin PCB Default (SDA:4, SCL:5, L:0, OK:3, R:1)
+        </button>
+
+        <!-- Section 2: Clock Faces -->
+        <h3 class="config-section-title">
+          <span>🕒</span> Pilihan Style Jam (Clock Faces)
+        </h3>
+        <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 14px;">
+          Pilih tampilan jam tangan favorit yang akan muncul saat standby atau screensaver:
+        </p>
+
+        <div class="style-cards-grid" id="clock-style-grid">
+          <div class="style-card selected" onclick="selectClockStyle(0)">
+            <span class="style-card-badge">STYLE 0</span>
+            <div class="style-card-name">Retro Chronos</div>
+            <div class="style-card-desc">Tampilan klasik arcade watch, status koneksi BLE, baterai HP, dan prompt ticker.</div>
+          </div>
+
+          <div class="style-card" onclick="selectClockStyle(1)">
+            <span class="style-card-badge">STYLE 1</span>
+            <div class="style-card-name">Minimal Digital</div>
+            <div class="style-card-desc">Tipografi bersih & elegan, jam menit melayang dengan status dot minimalis.</div>
+          </div>
+
+          <div class="style-card" onclick="selectClockStyle(2)">
+            <span class="style-card-badge">STYLE 2</span>
+            <div class="style-card-name">Analog Watch</div>
+            <div class="style-card-desc">Dial jam jarum lingkaran klasik, penanda 12 jam, jarum detik, dan badge tanggal.</div>
+          </div>
+
+          <div class="style-card" onclick="selectClockStyle(3)">
+            <span class="style-card-badge">STYLE 3</span>
+            <div class="style-card-name">Cyberpunk Casio</div>
+            <div class="style-card-desc">Retro boxed sci-fi, kotak hari aktif [S][M][T]..., dan bar detik dinamis.</div>
+          </div>
+
+          <div class="style-card" onclick="selectClockStyle(4)">
+            <span class="style-card-badge">STYLE 4</span>
+            <div class="style-card-name">Big Glance</div>
+            <div class="style-card-desc">Angka raksasa super tebal, sangat mudah dan nyaman dibaca dari kejauhan meja.</div>
+          </div>
+        </div>
+
+        <!-- Section 3: Spotify Styles -->
+        <h3 class="config-section-title">
+          <span>🎵</span> Pilihan Style Spotify / Now Playing
+        </h3>
+        <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 14px;">
+          Pilih tata letak saat memutar musik dari HP (Bluetooth) atau PC (USB):
+        </p>
+
+        <div class="style-cards-grid" id="spotify-style-grid">
+          <div class="style-card selected" onclick="selectSpotifyStyle(0)">
+            <span class="style-card-badge">STYLE 0</span>
+            <div class="style-card-name">Classic HUD</div>
+            <div class="style-card-desc">Equalizer 5-bar audio-reaktif, judul lagu marquee, lirik real-time & baris berikutnya.</div>
+          </div>
+
+          <div class="style-card" onclick="selectSpotifyStyle(1)">
+            <span class="style-card-badge">STYLE 1</span>
+            <div class="style-card-name">Retro Cassette</div>
+            <div class="style-card-desc">Bentuk kaset pita vintage dengan roda berputar saat lagu diputar & counter tape.</div>
+          </div>
+
+          <div class="style-card" onclick="selectSpotifyStyle(2)">
+            <span class="style-card-badge">STYLE 2</span>
+            <div class="style-card-name">Big Lyrics Focus</div>
+            <div class="style-card-desc">Mode karaoke: ukuran font lirik maksimal, visualizer beat di kiri-kanan layar.</div>
+          </div>
+
+          <div class="style-card" onclick="selectSpotifyStyle(3)">
+            <span class="style-card-badge">STYLE 3</span>
+            <div class="style-card-name">Compact Vinyl Player</div>
+            <div class="style-card-desc">Piringan hitam berputar, progress bar durasi lagu, judul tebal, & lirik ticker.</div>
+          </div>
+        </div>
+
+        <!-- Section 4: Display & Lyrics Toggles -->
+        <h3 class="config-section-title">
+          <span>✨</span> Pengaturan Lirik & Tampilan Layar OLED
+        </h3>
+
+        <div class="option-row">
+          <div class="option-info">
+            <strong>Aktifkan Tampilan Lirik Real-Time (Synced Lyrics)</strong>
+            <span>Jika dinonaktifkan, mode musik akan menampilkan visualizer audio 9-band dan info artis.</span>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="cfg-lyrics" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <div class="option-row">
+          <div class="option-info">
+            <strong>Kecerahan Layar OLED (Contrast)</strong>
+            <span>Atur tingkat keterangan layar agar hemat daya atau lebih terang.</span>
+          </div>
+          <div>
+            <select id="cfg-contrast" class="pin-select" style="width: 140px;">
+              <option value="0">Low (Redup)</option>
+              <option value="1" selected>Medium (Normal)</option>
+              <option value="2">High (Maksimal)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="option-row">
+          <div class="option-info">
+            <strong>Invert Display (Hitam / Putih)</strong>
+            <span>Balikkan warna layar menjadi latar putih dengan teks/grafis hitam.</span>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="cfg-invert">
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <!-- Save Button -->
+        <div class="save-bar">
+          <button id="btn-save" class="btn-save-large" onclick="saveConfigToDevice()" disabled>
+            💾 Simpan & Terapkan ke SIXWATCS
+          </button>
+          <span style="font-size: 0.85rem; color: var(--text-muted);">
+            Pengaturan langsung aktif di OLED seketika tanpa perlu restart!
+          </span>
+        </div>
+
+        <!-- Serial Terminal Log -->
+        <div class="serial-log-wrap">
+          <div class="serial-log-head">
+            <span class="serial-log-title">LIVE SERIAL DATA STREAM (115,200 BPS)</span>
+            <button class="btn-ghost" style="padding: 4px 10px; font-size: 0.75rem;" onclick="clearSerialLog()">Clear</button>
+          </div>
+          <div id="serial-log" class="serial-log-content">Menunggu koneksi USB...</div>
+        </div>
+      </section>
+    </div>
   </main>
+
+  <!-- Toast Notification Popup -->
+  <div id="toast" class="toast-box">Pengaturan berhasil disimpan!</div>
 
   <footer>
     <p>SIXWATCS &copy; 2026 • Minimalist ESP32-C3 OLED Companion & Retro Arcade • Released under MIT License</p>
   </footer>
+
+  <script>
+    // Tab Switching
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+
+      if (tabId === 'flasher') {
+        document.querySelectorAll('.tab-btn')[0].classList.add('active');
+        document.getElementById('tab-flasher').classList.add('active');
+      } else {
+        document.querySelectorAll('.tab-btn')[1].classList.add('active');
+        document.getElementById('tab-configurator').classList.add('active');
+      }
+    }
+
+    // State Variables
+    let currentClockStyle = 0;
+    let currentSpotifyStyle = 0;
+    let serialPort = null;
+    let serialReader = null;
+    let serialWriter = null;
+    let isConnected = false;
+
+    // Toast notification
+    function showToast(msg, isSuccess = true) {
+      const toast = document.getElementById('toast');
+      toast.innerText = msg;
+      toast.style.borderColor = isSuccess ? 'var(--accent)' : '#ff4757';
+      toast.classList.add('show');
+      setTimeout(() => {
+        toast.classList.remove('show');
+      }, 3500);
+    }
+
+    // Append to live serial log
+    function logSerial(msg) {
+      const logEl = document.getElementById('serial-log');
+      logEl.innerText += '\n' + msg;
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function clearSerialLog() {
+      document.getElementById('serial-log').innerText = '';
+    }
+
+    // Clock Style Selection
+    function selectClockStyle(index) {
+      currentClockStyle = index;
+      const cards = document.querySelectorAll('#clock-style-grid .style-card');
+      cards.forEach((card, idx) => {
+        if (idx === index) card.classList.add('selected');
+        else card.classList.remove('selected');
+      });
+    }
+
+    // Spotify Style Selection
+    function selectSpotifyStyle(index) {
+      currentSpotifyStyle = index;
+      const cards = document.querySelectorAll('#spotify-style-grid .style-card');
+      cards.forEach((card, idx) => {
+        if (idx === index) card.classList.add('selected');
+        else card.classList.remove('selected');
+      });
+    }
+
+    // Reset default PCB pins
+    function resetDefaultPins() {
+      document.getElementById('cfg-sda').value = "4";
+      document.getElementById('cfg-scl').value = "5";
+      document.getElementById('cfg-btn-l').value = "0";
+      document.getElementById('cfg-btn-ok').value = "3";
+      document.getElementById('cfg-btn-r').value = "1";
+      showToast("Pin disetel ke default PCB SIXWATCS (SDA:4, SCL:5, L:0, OK:3, R:1)");
+    }
+
+    // Web Serial API Connection
+    async function connectDevice() {
+      if (!('serial' in navigator)) {
+        alert("Browser kamu belum mendukung Web Serial API. Buka di Google Chrome atau Microsoft Edge Desktop!");
+        return;
+      }
+
+      try {
+        logSerial("[WebSerial] Meminta izin akses port USB...");
+        serialPort = await navigator.serial.requestPort();
+        await serialPort.open({ baudRate: 115200 });
+
+        isConnected = true;
+        updateConnectionUI(true);
+        logSerial("[WebSerial] Terhubung ke port USB (115200 bps).");
+
+        // Start reading loop
+        readSerialLoop();
+
+        // Request device configuration after delay
+        setTimeout(() => {
+          requestDeviceConfig();
+        }, 600);
+
+      } catch (err) {
+        logSerial("[WebSerial Error] " + err.message);
+        showToast("Gagal terhubung: " + err.message, false);
+        updateConnectionUI(false);
+      }
+    }
+
+    async function disconnectDevice() {
+      try {
+        if (serialReader) {
+          await serialReader.cancel();
+          serialReader = null;
+        }
+        if (serialWriter) {
+          await serialWriter.releaseLock();
+          serialWriter = null;
+        }
+        if (serialPort) {
+          await serialPort.close();
+          serialPort = null;
+        }
+      } catch (err) {
+        console.error("Disconnect error:", err);
+      } finally {
+        isConnected = false;
+        updateConnectionUI(false);
+        logSerial("[WebSerial] Koneksi diputuskan.");
+        showToast("Koneksi USB diputuskan.");
+      }
+    }
+
+    function updateConnectionUI(connected) {
+      const dot = document.getElementById('conn-dot');
+      const text = document.getElementById('conn-text');
+      const btnConn = document.getElementById('btn-connect');
+      const btnDisconn = document.getElementById('btn-disconnect');
+      const btnRead = document.getElementById('btn-read');
+      const btnSave = document.getElementById('btn-save');
+
+      if (connected) {
+        dot.classList.add('connected');
+        text.innerText = "Terhubung: SIXWATCS (115200 bps)";
+        btnConn.disabled = true;
+        btnDisconn.disabled = false;
+        btnRead.disabled = false;
+        btnSave.disabled = false;
+      } else {
+        dot.classList.remove('connected');
+        text.innerText = "Belum Terhubung";
+        btnConn.disabled = false;
+        btnDisconn.disabled = true;
+        btnRead.disabled = true;
+        btnSave.disabled = true;
+      }
+    }
+
+    async function sendSerialCommand(text) {
+      if (!serialPort || !serialPort.writable) {
+        showToast("Device belum terhubung!", false);
+        return;
+      }
+      try {
+        const encoder = new TextEncoder();
+        const writer = serialPort.writable.getWriter();
+        await writer.write(encoder.encode(text + "\n"));
+        writer.releaseLock();
+        logSerial(">> " + text);
+      } catch (err) {
+        logSerial("[Send Error] " + err.message);
+      }
+    }
+
+    function requestDeviceConfig() {
+      logSerial("[WebSerial] Mengambil konfigurasi dari device...");
+      sendSerialCommand('{"cmd":"get_config"}');
+    }
+
+    async function readSerialLoop() {
+      const textDecoder = new TextDecoder();
+      let buffer = "";
+
+      try {
+        while (serialPort && serialPort.readable) {
+          serialReader = serialPort.readable.getReader();
+          while (true) {
+            const { value, done } = await serialReader.read();
+            if (done) break;
+            if (value) {
+              const chunk = textDecoder.decode(value, { stream: true });
+              buffer += chunk;
+              let lines = buffer.split(/[\r\n]+/);
+              buffer = lines.pop(); // keep partial line
+
+              for (let line of lines) {
+                line = line.trim();
+                if (line.length > 0) {
+                  logSerial("<< " + line);
+                  handleIncomingLine(line);
+                }
+              }
+            }
+          }
+        }
+      } catch (err) {
+        if (isConnected) {
+          logSerial("[ReadLoop Closed] " + err.message);
+        }
+      }
+    }
+
+    function handleIncomingLine(line) {
+      if (line.startsWith("{") && line.endsWith("}")) {
+        try {
+          const data = JSON.parse(line);
+
+          // Handle config response
+          if (data.status === "ok" && data.type === "config") {
+            if (data.sda !== undefined) document.getElementById('cfg-sda').value = String(data.sda);
+            if (data.scl !== undefined) document.getElementById('cfg-scl').value = String(data.scl);
+            if (data.btn_l !== undefined) document.getElementById('cfg-btn-l').value = String(data.btn_l);
+            if (data.btn_ok !== undefined) document.getElementById('cfg-btn-ok').value = String(data.btn_ok);
+            if (data.btn_r !== undefined) document.getElementById('cfg-btn-r').value = String(data.btn_r);
+
+            if (data.clock_style !== undefined) selectClockStyle(data.clock_style);
+            if (data.spotify_style !== undefined) selectSpotifyStyle(data.spotify_style);
+            if (data.lyrics_enable !== undefined) document.getElementById('cfg-lyrics').checked = (data.lyrics_enable === 1);
+            if (data.contrast !== undefined) document.getElementById('cfg-contrast').value = String(data.contrast);
+            if (data.invert !== undefined) document.getElementById('cfg-invert').checked = (data.invert === 1);
+
+            showToast("✅ Berhasil membaca konfigurasi aktif dari SIXWATCS!");
+          } else if (data.status === "saved") {
+            showToast("💾 Pengaturan berhasil disimpan dan langsung aktif di OLED!");
+          }
+        } catch (e) {
+          // not JSON, ignore
+        }
+      }
+    }
+
+    async function saveConfigToDevice() {
+      if (!isConnected) {
+        showToast("Device belum terhubung!", false);
+        return;
+      }
+
+      const payload = {
+        cmd: "set_config",
+        sda: parseInt(document.getElementById('cfg-sda').value),
+        scl: parseInt(document.getElementById('cfg-scl').value),
+        btn_l: parseInt(document.getElementById('cfg-btn-l').value),
+        btn_ok: parseInt(document.getElementById('cfg-btn-ok').value),
+        btn_r: parseInt(document.getElementById('cfg-btn-r').value),
+        clock_style: currentClockStyle,
+        spotify_style: currentSpotifyStyle,
+        lyrics_enable: document.getElementById('cfg-lyrics').checked ? 1 : 0,
+        contrast: parseInt(document.getElementById('cfg-contrast').value),
+        invert: document.getElementById('cfg-invert').checked ? 1 : 0
+      };
+
+      const jsonStr = JSON.stringify(payload);
+      await sendSerialCommand(jsonStr);
+    }
+  </script>
 
 </body>
 </html>
