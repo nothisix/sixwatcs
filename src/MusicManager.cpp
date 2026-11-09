@@ -387,6 +387,64 @@ void MusicManager::updateUI(ButtonEvent event) {
   renderMusicScreen();
 }
 
+void MusicManager::drawTempoGlidingLyric(int16_t clipX, int16_t clipY, int16_t clipW, int16_t clipH, int16_t textY, uint8_t fontSizeMode) {
+  if (s_lyricLine.length() == 0) return;
+
+  bool isHangul = Display::hasHangul(s_lyricLine);
+  if (fontSizeMode == 2) {
+    if (isHangul) u8g2.setFont(u8g2_font_gulim12_t_korean2);
+    else u8g2.setFont(u8g2_font_7x14B_tf);
+  } else if (fontSizeMode == 1) {
+    if (isHangul) u8g2.setFont(u8g2_font_gulim12_t_korean2);
+    else u8g2.setFont(u8g2_font_6x12_tf);
+  } else {
+    if (isHangul) u8g2.setFont(u8g2_font_gulim11_t_korean2);
+    else u8g2.setFont(u8g2_font_5x7_tf);
+  }
+
+  int16_t lineW = u8g2.getUTF8Width(s_lyricLine.c_str());
+
+  // 1. If text fits within window, center it nicely
+  if (lineW <= clipW) {
+    s_smoothLyricOffset = 0.0f;
+    int16_t posX = clipX + (clipW - lineW) / 2;
+    u8g2.drawUTF8(posX, textY, s_lyricLine.c_str());
+    return;
+  }
+
+  // 2. If text exceeds window, calculate silky tempo-adaptive gliding
+  int16_t maxOffset = lineW - clipW + 8; // 8px breathing space at end
+
+  uint32_t localElapsed = s_packetElapsedMs;
+  if (s_isPlaying && millis() > s_packetArrivalMs) {
+    localElapsed += (millis() - s_packetArrivalMs);
+  }
+  float rawProgress = (float)localElapsed / (float)s_lineDurationMs;
+  if (rawProgress < 0.0f) rawProgress = 0.0f;
+  if (rawProgress > 1.0f) rawProgress = 1.0f;
+
+  // Tempo-adaptive curve: fast tempo (<1500ms) has minimal lead-in
+  float leadIn = (s_lineDurationMs < 1500) ? 0.04f : 0.07f;
+  float leadOut = 1.0f - leadIn;
+  float curve;
+  if (rawProgress <= leadIn) {
+    curve = 0.0f;
+  } else if (rawProgress >= leadOut) {
+    curve = 1.0f;
+  } else {
+    float norm = (rawProgress - leadIn) / (leadOut - leadIn);
+    // Hermite smoothstep for organic ease-in / ease-out
+    curve = norm * norm * (3.0f - 2.0f * norm);
+  }
+
+  float targetOffset = curve * (float)maxOffset;
+  s_smoothLyricOffset += (targetOffset - s_smoothLyricOffset) * 0.45f;
+
+  u8g2.setClipWindow(clipX, clipY, clipX + clipW, clipY + clipH);
+  u8g2.drawUTF8(clipX + 2 - (int16_t)s_smoothLyricOffset, textY, s_lyricLine.c_str());
+  u8g2.setMaxClipWindow();
+}
+
 void MusicManager::renderMusicScreen() {
   uint8_t style = SettingsManager::getSpotifyStyle();
   bool lyricsEnabled = SettingsManager::isLyricsEnabled();
@@ -436,20 +494,22 @@ void MusicManager::renderMusicScreen() {
       u8g2.drawStr(52, 25, "PAUSE");
     }
 
-    // Cassette Top Label: Song Title
+    // Cassette Top Label: Song Title (marquee if long)
     u8g2.setFont(u8g2_font_4x6_tf);
     String fullTrack = hasActiveTrack() ? (s_title + " - " + s_artist) : "NO TRACK PLAYING";
-    fullTrack = Display::truncateUTF8(fullTrack, 110);
-    Display::drawCenteredStr(7, fullTrack.c_str());
+    int16_t trackW = u8g2.getUTF8Width(fullTrack.c_str());
+    if (trackW <= 110) {
+      Display::drawCenteredStr(7, fullTrack.c_str());
+    } else {
+      u8g2.setClipWindow(8, 2, 120, 9);
+      u8g2.drawUTF8(8 - s_scrollOffset, 7, fullTrack.c_str());
+      u8g2.setMaxClipWindow();
+    }
 
-    // Bottom Area (y=46..64): Lyric Line or Artist
+    // Bottom Area (y=46..64): Tempo-gliding Lyric Line or Artist
     u8g2.drawHLine(4, 46, SCREEN_WIDTH - 8);
     if (lyricsEnabled && s_lyricLine.length() > 0) {
-      bool isHangul = Display::hasHangul(s_lyricLine);
-      if (isHangul) u8g2.setFont(u8g2_font_gulim11_t_korean2);
-      else u8g2.setFont(u8g2_font_5x7_tf);
-      String lyrCut = Display::truncateUTF8(s_lyricLine, 120);
-      Display::drawCenteredStr(56, lyrCut.c_str());
+      drawTempoGlidingLyric(4, 47, SCREEN_WIDTH - 8, 16, 58, 1);
     } else {
       u8g2.setFont(u8g2_font_4x6_tf);
       if (hasActiveTrack()) {
@@ -457,11 +517,8 @@ void MusicManager::renderMusicScreen() {
       } else {
         Display::drawCenteredStr(55, "PUTAR LAGU DI HP / PC");
       }
+      Display::drawCenteredStr(63, "L:PREV | OK:PAUSE | R:NEXT");
     }
-
-    // Mini bottom hint
-    u8g2.setFont(u8g2_font_4x6_tf);
-    Display::drawCenteredStr(63, "L:PREV | OK:PAUSE | R:NEXT");
 
     u8g2.sendBuffer();
     return;
@@ -493,31 +550,28 @@ void MusicManager::renderMusicScreen() {
       u8g2.drawBox(118 + (i * 4), 38 - h, 2, h);
     }
 
-    // Main prominent lyric line (y=14..44)
+    // Main prominent lyric line (y=13..34)
     if (!hasActiveTrack()) {
       u8g2.setFont(u8g2_font_5x7_tf);
       Display::drawCenteredStr(32, "WAITING FOR MUSIC...");
     } else if (lyricsEnabled && s_lyricLine.length() > 0) {
-      bool isHangul = Display::hasHangul(s_lyricLine);
-      if (isHangul) u8g2.setFont(u8g2_font_gulim12_t_korean2);
-      else u8g2.setFont(u8g2_font_7x14B_tf);
-
-      int16_t lineW = u8g2.getUTF8Width(s_lyricLine.c_str());
-      if (lineW <= 98) {
-        Display::drawCenteredStr(30, s_lyricLine.c_str());
-      } else {
-        u8g2.setClipWindow(16, 14, 112, 34);
-        u8g2.drawUTF8(16 - (int16_t)s_smoothLyricOffset, 30, s_lyricLine.c_str());
-        u8g2.setMaxClipWindow();
-      }
+      // Tempo-gliding large prominent lyric (Karaoke Style)
+      drawTempoGlidingLyric(12, 13, 104, 20, 29, 2);
 
       // Next lyric preview below
       if (s_nextLyricLine.length() > 0) {
+        bool isHangul = Display::hasHangul(s_nextLyricLine);
         if (isHangul) u8g2.setFont(u8g2_font_gulim11_t_korean2);
         else u8g2.setFont(u8g2_font_5x7_tf);
         String nextCut = "> " + s_nextLyricLine;
-        nextCut = Display::truncateUTF8(nextCut, 100);
-        Display::drawCenteredStr(45, nextCut.c_str());
+        int16_t nextW = u8g2.getUTF8Width(nextCut.c_str());
+        if (nextW <= 104) {
+          Display::drawCenteredStr(45, nextCut.c_str());
+        } else {
+          u8g2.setClipWindow(12, 36, 116, 49);
+          u8g2.drawUTF8(12 - s_scrollOffset, 45, nextCut.c_str());
+          u8g2.setMaxClipWindow();
+        }
       }
     } else {
       u8g2.setFont(u8g2_font_7x14B_tf);
@@ -574,11 +628,17 @@ void MusicManager::renderMusicScreen() {
 
     u8g2.drawHLine(50, 12, 76);
 
-    // Song Title (Bold)
+    // Song Title (Bold, with marquee scroll if long)
     u8g2.setFont(u8g2_font_5x7_tf);
-    String titleCut = hasActiveTrack() ? s_title : "NO TRACK";
-    titleCut = Display::truncateUTF8(titleCut, 74);
-    u8g2.drawStr(52, 22, titleCut.c_str());
+    String titleStr = hasActiveTrack() ? s_title : "NO TRACK";
+    int16_t tw = u8g2.getUTF8Width(titleStr.c_str());
+    if (tw <= 74) {
+      u8g2.drawUTF8(52, 22, titleStr.c_str());
+    } else {
+      u8g2.setClipWindow(52, 14, 126, 24);
+      u8g2.drawUTF8(52 - s_scrollOffset, 22, titleStr.c_str());
+      u8g2.setMaxClipWindow();
+    }
 
     // Artist
     u8g2.setFont(u8g2_font_4x6_tf);
@@ -598,14 +658,10 @@ void MusicManager::renderMusicScreen() {
     int16_t progW = (int16_t)(rawProg * 72.0f);
     if (progW > 0) u8g2.drawBox(52, 36, progW, 4);
 
-    // Bottom: 1-line lyric ticker or control hint
+    // Bottom: Tempo-gliding Lyric Ticker
     u8g2.drawHLine(50, 44, 76);
     if (lyricsEnabled && s_lyricLine.length() > 0) {
-      bool isHangul = Display::hasHangul(s_lyricLine);
-      if (isHangul) u8g2.setFont(u8g2_font_gulim11_t_korean2);
-      else u8g2.setFont(u8g2_font_4x6_tf);
-      String lyrCut = Display::truncateUTF8(s_lyricLine, 74);
-      u8g2.drawStr(52, 53, lyrCut.c_str());
+      drawTempoGlidingLyric(52, 45, 74, 12, 54, 0);
     } else {
       u8g2.setFont(u8g2_font_4x6_tf);
       u8g2.drawStr(52, 53, "L:PREV | OK | R:NEXT");
@@ -718,55 +774,8 @@ void MusicManager::renderMusicScreen() {
       Display::drawCenteredStr(45, "[Playback Paused]");
     }
   } else {
-    // Current Active Singing Line (Prominent & Clear!)
-    // 1. Calculate continuous local real-time progress
-    uint32_t localElapsed = s_packetElapsedMs;
-    if (s_isPlaying && millis() > s_packetArrivalMs) {
-      localElapsed += (millis() - s_packetArrivalMs);
-    }
-    float rawProgress = (float)localElapsed / (float)s_lineDurationMs;
-    if (rawProgress < 0.0f) rawProgress = 0.0f;
-    if (rawProgress > 1.0f) rawProgress = 1.0f;
-
-    // 2. Select font (Hangul vs Latin)
-    bool isLyricHangul = Display::hasHangul(s_lyricLine);
-    if (isLyricHangul) {
-      u8g2.setFont(u8g2_font_gulim12_t_korean2);
-    } else {
-      u8g2.setFont(u8g2_font_6x12_tf);
-    }
-
-    int16_t lyricW = u8g2.getUTF8Width(s_lyricLine.c_str());
-    if (lyricW <= 118) {
-      s_smoothLyricOffset = 0.0f;
-      Display::drawCenteredStr(36, s_lyricLine.c_str());
-    } else {
-      int16_t maxOffset = lyricW - 114;
-
-      // Silky tempo-adaptive curve:
-      // For fast tempo lines (< 1500ms), shorten lead-in so it glides swiftly without delay
-      float leadIn = (s_lineDurationMs < 1500) ? 0.04f : 0.07f;
-      float leadOut = 1.0f - leadIn;
-      float curve;
-      if (rawProgress <= leadIn) {
-        curve = 0.0f;
-      } else if (rawProgress >= leadOut) {
-        curve = 1.0f;
-      } else {
-        float norm = (rawProgress - leadIn) / (leadOut - leadIn);
-        // Hermite smoothstep for organic acceleration and deceleration
-        curve = norm * norm * (3.0f - 2.0f * norm);
-      }
-
-      float targetOffset = curve * (float)maxOffset;
-
-      // Responsive lerp: fast response (0.45) tracks high tempo vocals tightly
-      s_smoothLyricOffset += (targetOffset - s_smoothLyricOffset) * 0.45f;
-
-      u8g2.setClipWindow(4, 24, 124, 38);
-      u8g2.drawUTF8(5 - (int16_t)s_smoothLyricOffset, 36, s_lyricLine.c_str());
-      u8g2.setMaxClipWindow();
-    }
+    // Current Active Singing Line (Prominent & Clear, tempo-gliding!)
+    drawTempoGlidingLyric(4, 24, 120, 15, 36, 1);
 
     // Next Line Preview (Upcoming Lyric with > indicator)
     if (s_nextLyricLine.length() > 0) {
@@ -777,8 +786,14 @@ void MusicManager::renderMusicScreen() {
         u8g2.setFont(u8g2_font_4x6_tf);
       }
       String nextCut = "> " + s_nextLyricLine;
-      nextCut = Display::truncateUTF8(nextCut, 120);
-      Display::drawCenteredStr(48, nextCut.c_str());
+      int16_t nextW = u8g2.getUTF8Width(nextCut.c_str());
+      if (nextW <= 120) {
+        Display::drawCenteredStr(48, nextCut.c_str());
+      } else {
+        u8g2.setClipWindow(4, 40, 124, 50);
+        u8g2.drawUTF8(4 - s_scrollOffset, 48, nextCut.c_str());
+        u8g2.setMaxClipWindow();
+      }
     }
   }
 

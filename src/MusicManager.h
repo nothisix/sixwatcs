@@ -46,6 +46,7 @@ public:
 
 private:
   static void parseSerialCommand(const String& line);
+  static void drawTempoGlidingLyric(int16_t clipX, int16_t clipY, int16_t clipW, int16_t clipH, int16_t textY, uint8_t fontSizeMode);
 
   static MusicSource s_source;
   static String s_title;
