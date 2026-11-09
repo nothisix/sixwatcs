@@ -14,6 +14,7 @@ import threading
 import argparse
 import ctypes
 import random
+import re
 import requests
 import serial
 import serial.tools.list_ports
@@ -65,24 +66,85 @@ def find_esp32_port():
             return p.device
     return ports[0].device
 
+def normalize_text(text):
+    if not text:
+        return ""
+    t = text
+    # Replace dangerous protocol delimiter
+    t = t.replace('|', '/')
+    # Normalize unicode quotes and dashes to standard ASCII
+    t = t.replace('’', "'").replace('‘', "'").replace('`', "'")
+    t = t.replace('“', '"').replace('”', '"')
+    t = t.replace('—', '-').replace('–', '-')
+    t = t.replace('…', '...')
+    # Clean musical note symbols to avoid font rendering glitches
+    t = t.replace('♪', '~').replace('♫', '~')
+    return t.strip()
+
+def clean_title(title):
+    if not title:
+        return ""
+    t = title.replace('|', '/')
+    # Remove featured artists: (feat. ...), (with ...), [feat. ...]
+    t = re.sub(r'\(feat\.[^)]*\)', '', t, flags=re.I)
+    t = re.sub(r'\(with[^)]*\)', '', t, flags=re.I)
+    t = re.sub(r'\[feat\.[^\]]*\]', '', t, flags=re.I)
+    t = re.sub(r'\[with[^\]]*\]', '', t, flags=re.I)
+    # Remove remaster / mix / edit / live / soundtrack tags
+    t = re.sub(r' - [0-9]{4} Remaster.*', '', t, flags=re.I)
+    t = re.sub(r' - Remaster.*', '', t, flags=re.I)
+    t = re.sub(r'\(.*?remaster.*?\)', '', t, flags=re.I)
+    t = re.sub(r'\[.*?remaster.*?\]', '', t, flags=re.I)
+    t = re.sub(r'\(.*?deluxe.*?\)', '', t, flags=re.I)
+    t = re.sub(r'\(.*?version.*?\)', '', t, flags=re.I)
+    t = re.sub(r' - Live.*', '', t, flags=re.I)
+    t = re.sub(r' - Bonus Track.*', '', t, flags=re.I)
+    t = re.sub(r' - Single Version.*', '', t, flags=re.I)
+    t = re.sub(r' - Radio Edit.*', '', t, flags=re.I)
+    t = re.sub(r' - Explicit.*', '', t, flags=re.I)
+    t = re.sub(r' - Clean.*', '', t, flags=re.I)
+    t = re.sub(r' - Original.*', '', t, flags=re.I)
+    # If title still has ' - ', take the main title before ' - ' if length is decent
+    if ' - ' in t:
+        parts = t.split(' - ')
+        if len(parts[0].strip()) >= 2:
+            t = parts[0]
+    return t.strip()
+
+def clean_artist(artist):
+    if not artist:
+        return ""
+    a = artist.replace('|', '/')
+    # Extract primary artist before comma, &, feat, x
+    a = a.split(',')[0]
+    a = a.split('&')[0]
+    a = re.sub(r'\s+(feat\.|ft\.|with|x)\s+.*', '', a, flags=re.I)
+    return a.strip()
+
 def parse_lrc(text):
     """Parses LRC timestamped lyrics into clean (seconds, text) tuples."""
     if not text:
         return []
     result = []
-    for line in text.splitlines():
+    lines = text.splitlines()
+    for line in lines:
         line = line.strip()
         if line.startswith('[') and ']' in line:
             end_bracket = line.index(']')
             time_part = line[1:end_bracket]
-            lyric_part = line[end_bracket + 1:].strip()
+            raw_lyric = line[end_bracket + 1:].strip()
+            lyric_part = normalize_text(raw_lyric)
             parts = time_part.split(':')
             if len(parts) == 2:
                 try:
                     m = float(parts[0])
                     s = float(parts[1])
-                    if lyric_part:  # Keep only actual lyric lines for strict sync
-                        result.append((m * 60.0 + s, lyric_part))
+                    t_sec = m * 60.0 + s
+                    if lyric_part:
+                        result.append((t_sec, lyric_part))
+                    else:
+                        # Empty timestamp in LRC represents vocal break / solo
+                        result.append((t_sec, "~ (Instrumental) ~"))
                 except ValueError:
                     pass
     result.sort(key=lambda x: x[0])
@@ -91,7 +153,7 @@ def parse_lrc(text):
 def get_lyrics_at_time(parsed_lrc, pos_sec):
     """Finds current active line, next upcoming line, elapsed_ms, and duration_ms."""
     if not parsed_lrc:
-        return "", "", 0, 1000
+        return "(No synced lyrics found)", "(Enjoy the music ~)", 0, 1000
 
     curr_idx = -1
     for i, (t, text) in enumerate(parsed_lrc):
@@ -106,7 +168,7 @@ def get_lyrics_at_time(parsed_lrc, pos_sec):
         first_t = parsed_lrc[0][0] if parsed_lrc else 1.0
         elapsed_ms = int(max(0.0, pos_sec) * 1000)
         duration_ms = int(max(0.3, first_t) * 1000)
-        return "♫ (Intro)", first_line, elapsed_ms, duration_ms
+        return "~ (Intro) ~", first_line, elapsed_ms, duration_ms
 
     t_start, curr_line = parsed_lrc[curr_idx]
 
@@ -114,7 +176,7 @@ def get_lyrics_at_time(parsed_lrc, pos_sec):
         t_end, next_line = parsed_lrc[curr_idx + 1]
     else:
         t_end = t_start + 4.5
-        next_line = "♫ (Outro)"
+        next_line = "~ (Outro) ~"
 
     duration = max(0.25, t_end - t_start)
     elapsed = max(0.0, pos_sec - t_start)
@@ -233,37 +295,80 @@ class MediaCompanion:
         if cache_key in self.lyrics_cache:
             return self.lyrics_cache[cache_key]
 
+        c_art = clean_artist(artist)
+        c_tit = clean_title(title)
         print(f"\n[Lyrics] Searching synced lyrics for '{title}' by '{artist}'...")
+
+        # 1. Exact match with original artist & title
         try:
-            # 1. Exact match endpoint
-            url = "https://lrclib.net/api/get"
-            r = requests.get(url, params={"artist_name": artist, "track_name": title}, timeout=4)
+            r = requests.get("https://lrclib.net/api/get", params={"artist_name": artist, "track_name": title}, timeout=2.0)
             if r.status_code == 200:
                 data = r.json()
-                synced = data.get("syncedLyrics")
-                if synced:
-                    parsed = parse_lrc(synced)
-                    print(f"[Lyrics] Found {len(parsed)} synced lyric lines!")
-                    self.lyrics_cache[cache_key] = parsed
-                    return parsed
-
-            # 2. Search fallback
-            search_url = "https://lrclib.net/api/search"
-            r = requests.get(search_url, params={"q": f"{artist} {title}"}, timeout=4)
-            if r.status_code == 200:
-                items = r.json()
-                for item in items:
-                    if item.get("syncedLyrics"):
-                        parsed = parse_lrc(item["syncedLyrics"])
-                        print(f"[Lyrics] Found {len(parsed)} synced lyric lines via search!")
+                if data.get("syncedLyrics"):
+                    parsed = parse_lrc(data["syncedLyrics"])
+                    if parsed:
+                        print(f"[Lyrics] Found {len(parsed)} synced lyric lines (Exact Match)!")
                         self.lyrics_cache[cache_key] = parsed
                         return parsed
+        except Exception:
+            pass
 
-        except Exception as e:
-            print(f"[Lyrics Warning] Could not fetch lyrics: {e}")
+        # 2. Exact match with cleaned artist & title (removes Remastered, feat., etc.)
+        if (c_art != artist) or (c_tit != title):
+            try:
+                r = requests.get("https://lrclib.net/api/get", params={"artist_name": c_art, "track_name": c_tit}, timeout=2.0)
+                if r.status_code == 200:
+                    data = r.json()
+                    if data.get("syncedLyrics"):
+                        parsed = parse_lrc(data["syncedLyrics"])
+                        if parsed:
+                            print(f"[Lyrics] Found {len(parsed)} synced lyric lines (Cleaned: '{c_tit}' by '{c_art}')!")
+                            self.lyrics_cache[cache_key] = parsed
+                            return parsed
+            except Exception:
+                pass
 
-        self.lyrics_cache[cache_key] = []
-        return []
+        # 3. Search query with clean artist + clean title
+        search_query = f"{c_art} {c_tit}".strip()
+        if search_query:
+            try:
+                r = requests.get("https://lrclib.net/api/search", params={"q": search_query}, timeout=2.5)
+                if r.status_code == 200:
+                    items = r.json()
+                    for item in items:
+                        if item.get("syncedLyrics"):
+                            parsed = parse_lrc(item["syncedLyrics"])
+                            if parsed:
+                                print(f"[Lyrics] Found {len(parsed)} synced lyric lines via search ('{search_query}')!")
+                                self.lyrics_cache[cache_key] = parsed
+                                return parsed
+            except Exception:
+                pass
+
+        # 4. Search query with clean title only
+        if c_tit and c_tit != search_query:
+            try:
+                r = requests.get("https://lrclib.net/api/search", params={"q": c_tit}, timeout=2.5)
+                if r.status_code == 200:
+                    items = r.json()
+                    for item in items:
+                        if item.get("syncedLyrics"):
+                            parsed = parse_lrc(item["syncedLyrics"])
+                            if parsed:
+                                print(f"[Lyrics] Found {len(parsed)} synced lyric lines via title search ('{c_tit}')!")
+                                self.lyrics_cache[cache_key] = parsed
+                                return parsed
+            except Exception:
+                pass
+
+        print(f"[Lyrics] No synced lyrics found for '{title}' by '{artist}'.")
+        # Return fallback placeholder so UI clearly communicates status with zero bugs
+        fallback = [
+            (0.0, "(No synced lyrics found)"),
+            (8.0, "(Enjoy the music ~)")
+        ]
+        self.lyrics_cache[cache_key] = fallback
+        return fallback
 
     async def get_current_media_info(self):
         if not HAS_WINSDK:
@@ -342,13 +447,20 @@ class MediaCompanion:
                 if track_id != f"{self.current_artist}|{self.current_title}":
                     self.current_title = media["title"]
                     self.current_artist = media["artist"]
-                    self.parsed_lyrics = self.fetch_lyrics(self.current_artist, self.current_title)
 
-                    # Send SONG packet
-                    song_pkt = f"SONG:{state_str}|{self.current_artist}|{self.current_title}|{media['app']}"
+                    # 1. Send SONG packet FIRST with 0ms delay so OLED title updates immediately
+                    safe_artist = self.current_artist.replace('|', '/')
+                    safe_title = self.current_title.replace('|', '/')
+                    song_pkt = f"SONG:{state_str}|{safe_artist}|{safe_title}|{media['app']}"
                     self.send_to_esp32(song_pkt)
                     self.last_song_packet = song_pkt
+
+                    # 2. Immediately clear old lyrics and show searching status on OLED
+                    self.send_to_esp32("LRC:Searching lyrics...||3,4,5,4,3|0|1000")
                     print(f"\n[Track Change] {self.current_title} - {self.current_artist}")
+
+                    # 3. Fetch lyrics with robust 4-tier fallback
+                    self.parsed_lyrics = self.fetch_lyrics(self.current_artist, self.current_title)
 
                 # Audio-reactive peak calculation
                 peak = self.get_audio_peak() if media["is_playing"] else 0.0

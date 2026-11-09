@@ -464,12 +464,12 @@ void MusicManager::renderMusicScreen() {
     Display::drawCenteredStr(46, "PUTAR LAGU DI SPOTIFY");
   } else if (s_lyricLine.length() == 0) {
     // Song is active but lyric has not loaded / instrumental / pause
-    u8g2.drawXBMP(58, 26, BITMAP_MUSIC_WIDTH, BITMAP_MUSIC_HEIGHT, BITMAP_MUSIC);
+    u8g2.drawXBMP(58, 25, BITMAP_MUSIC_WIDTH, BITMAP_MUSIC_HEIGHT, BITMAP_MUSIC);
     u8g2.setFont(u8g2_font_5x7_tf);
     if (s_isPlaying) {
-      Display::drawCenteredStr(45, "♫ Playing Music...");
+      Display::drawCenteredStr(45, "Playing Music...");
     } else {
-      Display::drawCenteredStr(45, "⏸ Paused");
+      Display::drawCenteredStr(45, "[Playback Paused]");
     }
   } else {
     // Current Active Singing Line (Prominent & Clear!)
