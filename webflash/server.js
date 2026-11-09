@@ -73,7 +73,7 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`[SIXWATCH Web Flasher] Running on http://0.0.0.0:${PORT}`);
-  console.log(`[SIXWATCH Web Flasher] Localhost access: http://localhost:${PORT}`);
-  console.log(`[SIXWATCH Web Flasher] Ready for Cloudflare Tunnel proxying.`);
+  console.log(`[SIXWATCS Web Flasher] Running on http://0.0.0.0:${PORT}`);
+  console.log(`[SIXWATCS Web Flasher] Localhost access: http://localhost:${PORT}`);
+  console.log(`[SIXWATCS Web Flasher] Ready for Cloudflare Tunnel proxying.`);
 });

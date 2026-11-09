@@ -131,7 +131,8 @@ def create_banner():
     draw.text((W - pad - 310, pad + 14), 'GITHUB: NOTHISIX / SIXWATCS', fill=(130, 140, 160, 255), font=font_header_tag)
 
     # --- 4. Glowing User Logo 'n6' (Left Area) ---
-    logo_src = Image.open('logo_white_transparent.png').convert('RGBA')
+    logo_file = 'assets/sixwatch_logo.png' if os.path.exists('assets/sixwatch_logo.png') else 'logo_white_transparent.png'
+    logo_src = Image.open(logo_file).convert('RGBA')
     logo_size = 230
     logo = logo_src.resize((logo_size, logo_size), Image.Resampling.LANCZOS)
 
@@ -163,8 +164,8 @@ def create_banner():
     draw.ellipse([tx + 12, ty + 8, tx + 20, ty + 16], fill=(255, 255, 255, 255))
     draw.text((tx + 28, ty + 5), 'SYSTEM ONLINE  v2.4', fill=(225, 230, 245, 255), font=font_micro)
 
-    # Big Title: SIXWATCH
-    draw.text((tx, ty + 36), 'SIXWATCH', fill=(255, 255, 255, 255), font=font_title)
+    # Big Title: SIXWATCS
+    draw.text((tx, ty + 36), 'SIXWATCS', fill=(255, 255, 255, 255), font=font_title)
 
     # Subtitle
     draw.text((tx + 2, ty + 130), 'SMART OLED DESK COMPANION & RETRO ARCADE HUD', fill=(195, 205, 225, 255), font=font_subtitle)

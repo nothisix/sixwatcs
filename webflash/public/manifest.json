@@ -1,5 +1,5 @@
 {
-  "name": "SIXWATCH ESP32-C3 Firmware",
+  "name": "SIXWATCS ESP32-C3 Firmware",
   "version": "2.4.0",
   "home_assistant_domain": "esphome",
   "new_install_prompt_erase": false,

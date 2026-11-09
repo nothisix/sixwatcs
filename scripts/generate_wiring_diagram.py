@@ -34,7 +34,7 @@ def create_wiring_diagram():
         draw.line([(cx, cy - 10), (cx, cy + 10)], fill=(180, 195, 220, 255), width=3)
 
     # --- 2. Title & Header ---
-    draw.text((pad + 25, pad + 10), "SIXWATCH // ESP32-C3 HARDWARE WIRING SCHEMATIC", fill=(255, 255, 255, 255), font=f_title)
+    draw.text((pad + 25, pad + 10), "SIXWATCS // ESP32-C3 HARDWARE WIRING SCHEMATIC", fill=(255, 255, 255, 255), font=f_title)
     draw.text((pad + 27, pad + 46), "SKEMA SAMBUNGAN: OLED SSD1306 + 3 TOMBOL ARCADE + CHARGER TP4056 + BATERAI 18650 + SAKLAR", fill=(130, 150, 180, 255), font=f_sub)
     draw.line([(pad + 20, pad + 66), (W - pad - 20, pad + 66)], fill=(38, 46, 64, 255), width=1)
 
