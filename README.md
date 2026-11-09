@@ -83,6 +83,43 @@ Hardware yang digunakan:
 
 ---
 
+## Panduan Desain & Fabrikasi PCB
+
+<p align="center">
+  <img src="assets/pcb_layout_design.png" alt="Blueprint Desain PCB SIXWATCS ESP32-C3 SuperMini" width="100%">
+</p>
+
+Untuk mencetak custom PCB di **EasyEDA / KiCad / JLCPCB**, gunakan acuan layout dan netlist berikut:
+
+### Dimensi & Parameter Footprint
+- **Ukuran Board Carrier**: Rekomendasi 85 mm × 65 mm (atau 75 mm × 55 mm compact).
+- **Pin Pitch ESP32-C3**: **2.54 mm (100 mil)** standard header.
+- **Row Spacing (Jarak Baris Kiri ke Kanan)**: **15.24 mm (600 mil)** center-to-center.
+- **Ukuran Lubang Bor (Drill Size)**: 0.9 mm – 1.0 mm (Diameter Copper Pad: 1.6 mm).
+- **Mounting Holes**: 4x lubang M3 (drill 3.2 mm) di setiap sudut PCB.
+
+### Pemetaan 16 Pin ESP32-C3 SuperMini (View: Komponen Depan, Port USB-C Menghadap ke Atas)
+- **Baris Kiri (Top to Bottom)**:
+  1. `5V` ➔ Output Saklar Power (3.7V – 4.2V dari baterai)
+  2. `GND` ➔ Ground Bus PCB
+  3. `GPIO 0` ➔ Tombol Kiri (Active LOW)
+  4. `GPIO 1` ➔ Tombol Kanan (Active LOW)
+  5. `GPIO 2` ➔ *NC (Strapping pin / Biarkan kosong)*
+  6. `GPIO 3` ➔ Tombol OK (Active LOW)
+  7. `GPIO 4` ➔ OLED Pin SDA (I2C Data)
+  8. `GPIO 5` ➔ OLED Pin SCL (I2C Clock)
+- **Baris Kanan (Top to Bottom)**:
+  1. `3V3` ➔ OLED Pin VCC (3.3V bersih dari LDO)
+  2. `GND` ➔ OLED Pin GND & Common Ground
+  3. `GPIO 10` ➔ *NC*
+  4. `GPIO 9` ➔ *NC (Tersambung ke tombol fisik BOOT di board)*
+  5. `GPIO 8` ➔ *NC (Tersambung ke LED biru status)*
+  6. `GPIO 7` ➔ *NC*
+  7. `GPIO 6` ➔ *NC*
+  8. `GPIO 20` ➔ *NC*
+
+---
+
 ## Kontrol 3 Tombol
 
 | Mode / Layar | Tombol Kiri (GPIO 0) | Tombol OK (GPIO 3) | Tombol Kanan (GPIO 1) |

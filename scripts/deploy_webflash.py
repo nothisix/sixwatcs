@@ -42,7 +42,8 @@ def deploy():
         ("public/assets/sixwatcs_logo.png", f"{REMOTE_DIR}/public/assets/sixwatcs_logo.png"),
         ("public/assets/sixwatch_banner.png", f"{REMOTE_DIR}/public/assets/sixwatch_banner.png"),
         ("public/assets/sixwatch_logo.png", f"{REMOTE_DIR}/public/assets/sixwatch_logo.png"),
-        ("public/assets/wiring_diagram.png", f"{REMOTE_DIR}/public/assets/wiring_diagram.png")
+        ("public/assets/wiring_diagram.png", f"{REMOTE_DIR}/public/assets/wiring_diagram.png"),
+        ("public/assets/pcb_layout_design.png", f"{REMOTE_DIR}/public/assets/pcb_layout_design.png")
     ]
 
     for local_rel, remote_path in upload_list:
