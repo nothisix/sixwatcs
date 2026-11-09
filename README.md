@@ -48,40 +48,38 @@ High score tiap game tersimpan otomatis di memory internal (NVS).
 
 ## Wiring & Skema Pin
 
+<p align="center">
+  <img src="assets/wiring_diagram.png" alt="Skema Wiring Lengkap ESP32-C3 SuperMini dengan TP4056 dan Baterai 18650" width="100%">
+</p>
+
 Hardware yang digunakan:
-- Board: **ESP32-C3 SuperMini**
+- Board: **ESP32-C3 SuperMini** (RISC-V 160MHz)
 - Layar: **0.96" I2C SSD1306 OLED (128x64)**
-- Kontrol: **3x Push Button tactile**
+- Kontrol: **3x Push Button tactile** (Active LOW, internal pull-up)
+- Power: **Modul Charger TP4056 dengan IC Proteksi** (Type-C)
+- Baterai: **Li-ion 18650 3.7V** (2600 - 3400 mAh)
+- Saklar: **SPST Slide Switch** (Power ON/OFF)
 
-Semua tombol menggunakan internal pull-up (`INPUT_PULLUP`), disambungkan langsung ke pin GPIO dan GND tanpa perlu resistor eksternal.
+### Tabel Sambungan Pin
 
-| Komponen | Fungsi | GPIO ESP32-C3 | Keterangan |
+| Komponen / Modul | Pin Modul | Terhubung Ke | Fungsi / Keterangan |
 | :--- | :--- | :--- | :--- |
-| **Tombol Kiri** | Previous / Left | **GPIO 0** | Terhubung ke GND |
-| **Tombol OK** | Action / Play-Pause | **GPIO 3** | Terhubung ke GND |
-| **Tombol Kanan** | Next / Right | **GPIO 1** | Terhubung ke GND |
-| **OLED SDA** | Data I2C | **GPIO 4** | Jalur I2C SDA |
-| **OLED SCL** | Clock I2C | **GPIO 5** | Jalur I2C SCL |
-| **OLED VCC** | Power 3.3V | **3V3** | Rail 3.3V ESP32 |
-| **OLED GND** | Ground | **GND** | Common Ground |
+| **Baterai 18650** | Kutub Positif (+) | **Pin B+ TP4056** | Jalur pengisian Li-ion 3.7V - 4.2V |
+| **Baterai 18650** | Kutub Negatif (-) | **Pin B- TP4056** | Ground Baterai & Proteksi DW01A |
+| **Modul TP4056** | Pin OUT+ | **Kaki IN Saklar** | Jalur tegangan baterai ke saklar power |
+| **Saklar ON/OFF** | Kaki OUT Saklar | **Pin 5V ESP32-C3** | Suplai power board via LDO ME6211 onboard |
+| **Modul TP4056** | Pin OUT- | **Pin GND ESP32-C3** | Ground utama sistem (Common Ground) |
+| **Layar OLED** | Pin VCC | **Pin 3V3 ESP32-C3** | Suplai 3.3V teregulasi stabil untuk display |
+| **Layar OLED** | Pin GND | **Pin GND ESP32-C3** | Common Ground |
+| **Layar OLED** | Pin SCL | **GPIO 5 ESP32-C3** | Dedicated I2C Clock |
+| **Layar OLED** | Pin SDA | **GPIO 4 ESP32-C3** | Dedicated I2C Data |
+| **Tombol Kiri** | Pin 1 / Pin 2 | **GPIO 0 & GND** | Previous / Left (Active LOW) |
+| **Tombol OK** | Pin 1 / Pin 2 | **GPIO 3 & GND** | Action / Play-Pause (Active LOW) |
+| **Tombol Kanan** | Pin 1 / Pin 2 | **GPIO 1 & GND** | Next / Right (Active LOW) |
 
-```
-    ESP32-C3 SuperMini (Left Header)
-   ┌────────────────────────────────────────┐
-   │ [USB-C]                                │
-   │ [1]  5V  ── 5V External                │
-   │ [2]  GND ── Common Ground ─────────┐   │
-   │ [3]  3V3 ── OLED VCC               │   │
-   │ [4]  IO0 ── Tombol Kiri   ────┐    │   │
-   │ [5]  IO1 ── Tombol Kanan  ──┐ │    │   │
-   │ [6]  IO2                    │ │    │   │
-   │ [7]  IO3 ── Tombol OK     ─┐│ │    │   │
-   │ [8]  IO4 ── OLED SDA       ││ │    │   │
-   │ [9]  IO5 ── OLED SCL       ││ │    │   │
-   └────────────────────────────││─│────│───┘
-                                ▼▼ ▼    ▼
-                      [Push Buttons ke GND]
-```
+> [!TIP]
+> **Mengapa baterai masuk ke pin 5V (bukan 3V3)?**
+> Baterai 18650 menghasilkan tegangan 3.7V hingga 4.2V saat terisi penuh. Pin **5V (VIN)** pada ESP32-C3 SuperMini memiliki regulator LDO onboard (*Low Dropout*) yang secara aman dan stabil menurunkannya ke 3.3V bersih untuk ESP32-C3 dan OLED. Gunakan pin **3V3** SuperMini untuk memberi daya pada OLED SSD1306.
 
 ---
 
