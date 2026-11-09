@@ -244,7 +244,7 @@ void MusicManager::update() {
         s_serialBuffer = "";
       }
     } else {
-      if (s_serialBuffer.length() < 120) {
+      if (s_serialBuffer.length() < 384) {
         s_serialBuffer += c;
       }
     }
@@ -275,8 +275,12 @@ void MusicManager::update() {
     if (millis() - s_lastScrollTime >= 55) {
       s_lastScrollTime = millis();
       String fullTrack = s_title + " - " + s_artist;
-      u8g2.setFont(u8g2_font_5x7_tf);
-      int16_t strW = u8g2.getStrWidth(fullTrack.c_str());
+      if (Display::hasHangul(fullTrack)) {
+        u8g2.setFont(u8g2_font_gulim11_t_korean2);
+      } else {
+        u8g2.setFont(u8g2_font_5x7_tf);
+      }
+      int16_t strW = u8g2.getUTF8Width(fullTrack.c_str());
       if (strW > 120) {
         s_scrollOffset++;
         if (s_scrollOffset > (strW - 100)) {
@@ -294,8 +298,12 @@ void MusicManager::update() {
     // Fast, smooth marquee scroll: 2 pixels every 28ms (~70 px/sec)
     if (millis() - s_lastLyricScrollTime >= 28) {
       s_lastLyricScrollTime = millis();
-      u8g2.setFont(u8g2_font_6x12_tf);
-      int16_t lineW = u8g2.getStrWidth(s_lyricLine.c_str());
+      if (Display::hasHangul(s_lyricLine)) {
+        u8g2.setFont(u8g2_font_gulim12_t_korean2);
+      } else {
+        u8g2.setFont(u8g2_font_6x12_tf);
+      }
+      int16_t lineW = u8g2.getUTF8Width(s_lyricLine.c_str());
       if (lineW > 120) {
         s_lyricScrollOffset += 2;
         if (s_lyricScrollOffset > (lineW - 85)) {
@@ -400,13 +408,18 @@ void MusicManager::renderMusicScreen() {
     String fullTrack = s_title;
     if (s_artist.length() > 0) fullTrack += " - " + s_artist;
 
-    u8g2.setFont(u8g2_font_5x7_tf);
-    int16_t trackW = u8g2.getStrWidth(fullTrack.c_str());
-    if (trackW <= 120) {
-      Display::drawCenteredStr(20, fullTrack.c_str());
+    bool isTitleHangul = Display::hasHangul(fullTrack);
+    if (isTitleHangul) {
+      u8g2.setFont(u8g2_font_gulim11_t_korean2);
     } else {
-      u8g2.setClipWindow(4, 13, 124, 22);
-      u8g2.drawStr(4 - s_scrollOffset, 20, fullTrack.c_str());
+      u8g2.setFont(u8g2_font_5x7_tf);
+    }
+    int16_t trackW = u8g2.getUTF8Width(fullTrack.c_str());
+    if (trackW <= 120) {
+      Display::drawCenteredStr(21, fullTrack.c_str());
+    } else {
+      u8g2.setClipWindow(4, 12, 124, 23);
+      u8g2.drawUTF8(4 - s_scrollOffset, 21, fullTrack.c_str());
       u8g2.setMaxClipWindow();
     }
   } else {
@@ -435,8 +448,13 @@ void MusicManager::renderMusicScreen() {
     }
   } else {
     // Current Active Singing Line (Prominent & Clear!)
-    u8g2.setFont(u8g2_font_6x12_tf);
-    int16_t lyricW = u8g2.getStrWidth(s_lyricLine.c_str());
+    bool isLyricHangul = Display::hasHangul(s_lyricLine);
+    if (isLyricHangul) {
+      u8g2.setFont(u8g2_font_gulim12_t_korean2);
+    } else {
+      u8g2.setFont(u8g2_font_6x12_tf);
+    }
+    int16_t lyricW = u8g2.getUTF8Width(s_lyricLine.c_str());
     if (lyricW <= 120) {
       Display::drawCenteredStr(35, s_lyricLine.c_str());
     } else {
@@ -448,7 +466,7 @@ void MusicManager::renderMusicScreen() {
       s_smoothLyricOffset += (targetOffset - s_smoothLyricOffset) * 0.35f;
 
       u8g2.setClipWindow(4, 24, 124, 37);
-      u8g2.drawStr(4 - (int16_t)s_smoothLyricOffset, 35, s_lyricLine.c_str());
+      u8g2.drawUTF8(4 - (int16_t)s_smoothLyricOffset, 35, s_lyricLine.c_str());
       u8g2.setMaxClipWindow();
     }
 
@@ -461,10 +479,15 @@ void MusicManager::renderMusicScreen() {
 
     // Next Line Preview (Upcoming Lyric with > indicator)
     if (s_nextLyricLine.length() > 0) {
-      u8g2.setFont(u8g2_font_4x6_tf);
+      bool isNextHangul = Display::hasHangul(s_nextLyricLine);
+      if (isNextHangul) {
+        u8g2.setFont(u8g2_font_gulim11_t_korean2);
+      } else {
+        u8g2.setFont(u8g2_font_4x6_tf);
+      }
       String nextCut = "> " + s_nextLyricLine;
-      if (nextCut.length() > 25) nextCut = nextCut.substring(0, 25) + "...";
-      Display::drawCenteredStr(47, nextCut.c_str());
+      nextCut = Display::truncateUTF8(nextCut, 120);
+      Display::drawCenteredStr(48, nextCut.c_str());
     }
   }
 

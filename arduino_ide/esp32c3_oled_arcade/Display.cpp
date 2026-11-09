@@ -12,6 +12,7 @@ void init() {
   Wire.setClock(100000); // 100kHz Standard Safe Mode for crystal-clear signal integrity
   
   u8g2.begin();
+  u8g2.enableUTF8Print();
   u8g2.setPowerSave(0);
   u8g2.setContrast(140);
 
@@ -30,17 +31,17 @@ void render() {
 }
 
 void drawCenteredStr(int16_t y, const char* str) {
-  int16_t strWidth = u8g2.getStrWidth(str);
+  int16_t strWidth = u8g2.getUTF8Width(str);
   int16_t x = (SCREEN_WIDTH - strWidth) / 2;
   if (x < 0) x = 0;
-  u8g2.drawStr(x, y, str);
+  u8g2.drawUTF8(x, y, str);
 }
 
 void drawRightAlignedStr(int16_t x, int16_t y, const char* str) {
-  int16_t strWidth = u8g2.getStrWidth(str);
+  int16_t strWidth = u8g2.getUTF8Width(str);
   int16_t posX = x - strWidth;
   if (posX < 0) posX = 0;
-  u8g2.drawStr(posX, y, str);
+  u8g2.drawUTF8(posX, y, str);
 }
 
 void drawProgressBar(int16_t x, int16_t y, uint8_t w, uint8_t h, float progress) {
@@ -64,6 +65,40 @@ void drawDashedHLine(int16_t x, int16_t y, int16_t w, uint8_t dash, uint8_t spac
     }
     curX += dash + space;
   }
+}
+
+bool hasHangul(const String& str) {
+  const uint8_t* p = (const uint8_t*)str.c_str();
+  while (*p) {
+    if (*p >= 0xE0 && *p <= 0xEF) {
+      uint8_t b1 = *p;
+      uint8_t b2 = *(p + 1);
+      if (b2 == 0) break;
+      // Hangul Syllables U+AC00..U+D7A3 (UTF-8: EA B0 80 .. ED 9E A3)
+      if (b1 >= 0xEA && b1 <= 0xED) return true;
+      // Hangul Compatibility Jamo U+3131..U+318E (UTF-8: E3 84 B1 .. E3 86 8E)
+      if (b1 == 0xE3 && b2 >= 0x84 && b2 <= 0x86) return true;
+      // Hangul Jamo U+1100..U+11FF (UTF-8: E1 84 80 .. E1 87 BF)
+      if (b1 == 0xE1 && b2 >= 0x84 && b2 <= 0x87) return true;
+    }
+    p++;
+  }
+  return false;
+}
+
+String truncateUTF8(const String& str, int16_t maxWidth) {
+  if (u8g2.getUTF8Width(str.c_str()) <= maxWidth) return str;
+  String res = str;
+  while (res.length() > 0 && (u8g2.getUTF8Width((res + "...").c_str()) > maxWidth)) {
+    while (res.length() > 0) {
+      uint8_t c = (uint8_t)res.charAt(res.length() - 1);
+      res.remove(res.length() - 1);
+      if ((c & 0xC0) != 0x80) {
+        break; // Removed the leading byte of a multi-byte char or a 1-byte ASCII
+      }
+    }
+  }
+  return res + "...";
 }
 
 } // namespace Display

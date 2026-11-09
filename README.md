@@ -20,6 +20,7 @@ Jam tangan menggunakan library **ChronosESP32** dan terhubung ke smartphone mela
 ### 2. Spotify Now Playing, Synced Lyrics & Audio EQ
 Saat terhubung ke laptop/PC via kabel USB:
 - **Tempo-Synced Lyrics**: Lirik lagu real-time dari LRCLIB yang bergulir mengikuti durasi dan tempo bait vokal lagu.
+- **Dukungan Karakter Korea (Hangul 한글)**: Render karakter Hangul asli secara native di layar OLED (KS X 1001 / Gulim 11-12px) untuk lagu-lagu K-Pop tanpa kotak hilang atau karakter rusak.
 - **Karaoke Vocal Progress Bar**: Garis progres mikro 1-pixel di bawah lirik aktif yang melacak progres bait lagu.
 - **Pre-Lirik Preview**: Menampilkan baris lirik berikutnya agar kamu tahu bait apa yang akan dinyanyikan selanjutnya.
 - **Equalizer Audio-Reaktif**: 5 bar equalizer retro di pojok kanan atas bergerak dinamis mengikuti volume dan beat audio Windows (Core Audio API).

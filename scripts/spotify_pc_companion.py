@@ -18,6 +18,12 @@ import requests
 import serial
 import serial.tools.list_ports
 
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
+
 try:
     from winsdk.windows.media.control import (
         GlobalSystemMediaTransportControlsSessionManager as MediaManager,
