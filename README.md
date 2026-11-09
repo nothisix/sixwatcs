@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/sixwatch_banner.png" alt="SIXWATCS - Minimalist ESP32-C3 OLED Desk Companion" width="100%">
+  <img src="assets/sixwatcs_banner.png" alt="SIXWATCS - Minimalist ESP32-C3 OLED Desk Companion" width="100%">
 </p>
 
 # sixwatcs

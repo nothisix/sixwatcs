@@ -258,8 +258,10 @@ def create_banner():
     draw.text((pad + 30, H - pad - 30), specs_text, fill=(110, 120, 140, 255), font=font_micro)
 
     os.makedirs('assets', exist_ok=True)
-    out_path = 'assets/sixwatch_banner.png'
+    out_path = 'assets/sixwatcs_banner.png'
     img.save(out_path, 'PNG')
+    # Compatibility fallback
+    img.save('assets/sixwatch_banner.png', 'PNG')
     print(f'Banner successfully generated and saved to {out_path}!')
 
 if __name__ == '__main__':
