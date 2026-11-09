@@ -89,9 +89,9 @@ def parse_lrc(text):
     return result
 
 def get_lyrics_at_time(parsed_lrc, pos_sec):
-    """Finds current active line, next upcoming line, and tempo-synced progress percentage (0-100%)."""
+    """Finds current active line, next upcoming line, elapsed_ms, and duration_ms."""
     if not parsed_lrc:
-        return "", "", 0
+        return "", "", 0, 1000
 
     curr_idx = -1
     for i, (t, text) in enumerate(parsed_lrc):
@@ -104,23 +104,24 @@ def get_lyrics_at_time(parsed_lrc, pos_sec):
         # Song is playing intro before vocals begin
         first_line = parsed_lrc[0][1] if parsed_lrc else ""
         first_t = parsed_lrc[0][0] if parsed_lrc else 1.0
-        prog = min(100, max(0, int((pos_sec / first_t) * 100))) if first_t > 0 else 0
-        return "♫ (Intro)", first_line, prog
+        elapsed_ms = int(max(0.0, pos_sec) * 1000)
+        duration_ms = int(max(0.3, first_t) * 1000)
+        return "♫ (Intro)", first_line, elapsed_ms, duration_ms
 
     t_start, curr_line = parsed_lrc[curr_idx]
 
     if curr_idx + 1 < len(parsed_lrc):
         t_end, next_line = parsed_lrc[curr_idx + 1]
     else:
-        t_end = t_start + 5.0
+        t_end = t_start + 4.5
         next_line = "♫ (Outro)"
 
-    duration = max(0.4, t_end - t_start)
+    duration = max(0.25, t_end - t_start)
     elapsed = max(0.0, pos_sec - t_start)
-    progress_ratio = min(1.0, max(0.0, elapsed / duration))
-    prog_pct = int(progress_ratio * 100)
+    elapsed_ms = int(elapsed * 1000)
+    duration_ms = int(duration * 1000)
 
-    return curr_line, next_line, prog_pct
+    return curr_line, next_line, elapsed_ms, duration_ms
 
 class MediaCompanion:
     def __init__(self, port, baud=115200):
@@ -298,9 +299,9 @@ class MediaCompanion:
                 if 0.0 <= elapsed < 15.0:
                     pos_sec += elapsed
 
-            # Add +0.20s lead-time compensation for serial transmission & frame rendering
+            # Add +0.15s lead-time compensation for serial transmission & frame rendering
             if is_playing:
-                pos_sec += 0.20
+                pos_sec += 0.15
 
             if not title:
                 return None
@@ -358,14 +359,14 @@ class MediaCompanion:
                 b3 = min(8, max(1, int(peak * 7.5 + random.uniform(0, 0.3))))
                 b4 = min(8, max(1, int(peak * 6.0 + random.uniform(0, 0.3))))
 
-                # Get synchronized lyric line and tempo progress (0-100%)
-                curr_lrc, next_lrc, prog_pct = get_lyrics_at_time(self.parsed_lyrics, media["pos_sec"])
+                # Get synchronized lyric line, next line, and continuous tempo timing
+                curr_lrc, next_lrc, elapsed_ms, duration_ms = get_lyrics_at_time(self.parsed_lyrics, media["pos_sec"])
 
-                # Send LRC, EQ stream, and tempo progress packet every 90ms for silky fluid sync
-                if now - self.last_lrc_time >= 0.09:
+                # Send LRC, EQ stream, and timing packet every 35ms (~28 FPS) for silky sync
+                if now - self.last_lrc_time >= 0.035:
                     self.last_lrc_time = now
-                    # Format: LRC:<current_line>|<next_line>|<b0>,<b1>,<b2>,<b3>,<b4>|<prog_pct>
-                    lrc_packet = f"LRC:{curr_lrc}|{next_lrc}|{b0},{b1},{b2},{b3},{b4}|{prog_pct}"
+                    # Format: LRC:<current_line>|<next_line>|<b0>,<b1>,<b2>,<b3>,<b4>|<elapsed_ms>|<duration_ms>
+                    lrc_packet = f"LRC:{curr_lrc}|{next_lrc}|{b0},{b1},{b2},{b3},{b4}|{elapsed_ms}|{duration_ms}"
                     self.send_to_esp32(lrc_packet)
 
                     # Live terminal display

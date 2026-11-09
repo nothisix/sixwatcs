@@ -21,6 +21,7 @@ public:
   static void setTrack(MusicSource source, const String& title, const String& artist, const String& app, bool isPlaying);
 
   // Synced Lyrics & Audio-reactive EQ setting
+  static void setLyrics(const String& currentLine, const String& nextLine, uint32_t elapsedMs, uint32_t durationMs);
   static void setLyrics(const String& currentLine, const String& nextLine, uint8_t progressPct = 0);
   static void setEqualizer(uint8_t b0, uint8_t b1, uint8_t b2, uint8_t b3, uint8_t b4);
 
@@ -61,6 +62,9 @@ private:
   static int16_t s_lyricScrollOffset;
   static unsigned long s_lastLyricScrollTime;
   static unsigned long s_lyricPauseUntil;
+  static uint32_t s_packetElapsedMs;
+  static uint32_t s_lineDurationMs;
+  static unsigned long s_packetArrivalMs;
 
   // Compact Title marquee scrolling
   static int16_t s_scrollOffset;

@@ -19,6 +19,9 @@ float MusicManager::s_smoothLyricOffset = 0.0f;
 int16_t MusicManager::s_lyricScrollOffset = 0;
 unsigned long MusicManager::s_lastLyricScrollTime = 0;
 unsigned long MusicManager::s_lyricPauseUntil = 0;
+uint32_t MusicManager::s_packetElapsedMs = 0;
+uint32_t MusicManager::s_lineDurationMs = 1000;
+unsigned long MusicManager::s_packetArrivalMs = 0;
 
 int16_t MusicManager::s_scrollOffset = 0;
 unsigned long MusicManager::s_lastScrollTime = 0;
@@ -44,6 +47,9 @@ void MusicManager::begin() {
   s_lyricScrollOffset = 0;
   s_lastLyricScrollTime = 0;
   s_lyricPauseUntil = 0;
+  s_packetElapsedMs = 0;
+  s_lineDurationMs = 1000;
+  s_packetArrivalMs = 0;
 
   s_scrollOffset = 0;
   s_lastScrollTime = 0;
@@ -53,7 +59,7 @@ void MusicManager::begin() {
   s_lastExternalEqTime = 0;
   for (int i = 0; i < 5; i++) s_eqHeights[i] = 1;
 
-  s_serialBuffer.reserve(128);
+  s_serialBuffer.reserve(256);
 }
 
 void MusicManager::onBleMusicReceived(const String& title, const String& artist, const String& app, uint8_t state) {
@@ -77,6 +83,10 @@ void MusicManager::setTrack(MusicSource source, const String& title, const Strin
     s_lyricLine = "";
     s_nextLyricLine = "";
     s_lyricScrollOffset = 0;
+    s_smoothLyricOffset = 0.0f;
+    s_packetElapsedMs = 0;
+    s_lineDurationMs = 1000;
+    s_packetArrivalMs = 0;
     s_lyricPauseUntil = millis() + 1000;
   }
 
@@ -87,14 +97,21 @@ void MusicManager::setTrack(MusicSource source, const String& title, const Strin
 }
 
 void MusicManager::setLyrics(const String& currentLine, const String& nextLine, uint8_t progressPct) {
+  setLyrics(currentLine, nextLine, (uint32_t)progressPct * 10, 1000);
+}
+
+void MusicManager::setLyrics(const String& currentLine, const String& nextLine, uint32_t elapsedMs, uint32_t durationMs) {
   if (s_lyricLine != currentLine) {
     s_lyricLine = currentLine;
-    s_lyricScrollOffset = 0;
     s_smoothLyricOffset = 0.0f;
-    s_lyricPauseUntil = millis() + 150;
+    s_lyricScrollOffset = 0;
+    s_lyricPauseUntil = millis() + 80;
   }
   s_nextLyricLine = nextLine;
-  s_lyricProgress = (progressPct > 100) ? 100 : progressPct;
+  s_packetElapsedMs = elapsedMs;
+  s_lineDurationMs = (durationMs > 150) ? durationMs : 150;
+  s_packetArrivalMs = millis();
+  s_lyricProgress = (uint8_t)((elapsedMs * 100) / s_lineDurationMs);
 }
 
 void MusicManager::setEqualizer(uint8_t b0, uint8_t b1, uint8_t b2, uint8_t b3, uint8_t b4) {
@@ -175,7 +192,8 @@ void MusicManager::parseSerialCommand(const String& line) {
       setTrack(MUSIC_SRC_SERIAL, titleStr, artistStr, appStr, isPlay);
     }
   } else if (line.startsWith("LRC:")) {
-    // Format: LRC:<current_line>|<next_line>|<b0>,<b1>,<b2>,<b3>,<b4>|<prog_pct>
+    // Format: LRC:<current_line>|<next_line>|<b0>,<b1>,<b2>,<b3>,<b4>|<elapsed_ms>|<duration_ms>
+    // Or fallback: LRC:<current_line>|<next_line>|<b0>,<b1>,<b2>,<b3>,<b4>|<prog_pct>
     int firstPipe = line.indexOf('|', 4);
     if (firstPipe == -1) {
       setLyrics(line.substring(4), "", 0);
@@ -191,15 +209,22 @@ void MusicManager::parseSerialCommand(const String& line) {
     String nextLine = line.substring(firstPipe + 1, secondPipe);
 
     int thirdPipe = line.indexOf('|', secondPipe + 1);
-    uint8_t prog = 0;
     String eqStr = "";
     if (thirdPipe != -1) {
       eqStr = line.substring(secondPipe + 1, thirdPipe);
-      prog = (uint8_t)line.substring(thirdPipe + 1).toInt();
+      int fourthPipe = line.indexOf('|', thirdPipe + 1);
+      if (fourthPipe != -1) {
+        uint32_t elapsedMs = (uint32_t)line.substring(thirdPipe + 1, fourthPipe).toInt();
+        uint32_t durationMs = (uint32_t)line.substring(fourthPipe + 1).toInt();
+        setLyrics(currLine, nextLine, elapsedMs, durationMs);
+      } else {
+        uint8_t prog = (uint8_t)line.substring(thirdPipe + 1).toInt();
+        setLyrics(currLine, nextLine, prog);
+      }
     } else {
       eqStr = line.substring(secondPipe + 1);
+      setLyrics(currLine, nextLine, 0);
     }
-    setLyrics(currLine, nextLine, prog);
 
     // Parse audio-reactive EQ values: e.g. "8,6,7,9,4"
     int c1 = eqStr.indexOf(',');
@@ -448,33 +473,53 @@ void MusicManager::renderMusicScreen() {
     }
   } else {
     // Current Active Singing Line (Prominent & Clear!)
+    // 1. Calculate continuous local real-time progress
+    uint32_t localElapsed = s_packetElapsedMs;
+    if (s_isPlaying && millis() > s_packetArrivalMs) {
+      localElapsed += (millis() - s_packetArrivalMs);
+    }
+    float rawProgress = (float)localElapsed / (float)s_lineDurationMs;
+    if (rawProgress < 0.0f) rawProgress = 0.0f;
+    if (rawProgress > 1.0f) rawProgress = 1.0f;
+
+    // 2. Select font (Hangul vs Latin)
     bool isLyricHangul = Display::hasHangul(s_lyricLine);
     if (isLyricHangul) {
       u8g2.setFont(u8g2_font_gulim12_t_korean2);
     } else {
       u8g2.setFont(u8g2_font_6x12_tf);
     }
+
     int16_t lyricW = u8g2.getUTF8Width(s_lyricLine.c_str());
-    if (lyricW <= 120) {
-      Display::drawCenteredStr(35, s_lyricLine.c_str());
+    if (lyricW <= 118) {
+      s_smoothLyricOffset = 0.0f;
+      Display::drawCenteredStr(36, s_lyricLine.c_str());
     } else {
-      // Dynamic tempo-synced offset:
-      // Offset glides across strictly in sync with vocal tempo progress!
-      int16_t maxOffset = lyricW - 90;
-      float targetOffset = (float)(s_lyricProgress * maxOffset) / 100.0f;
-      // Exponential lerp smoothing for silky Spotify inertia
-      s_smoothLyricOffset += (targetOffset - s_smoothLyricOffset) * 0.35f;
+      int16_t maxOffset = lyricW - 114;
 
-      u8g2.setClipWindow(4, 24, 124, 37);
-      u8g2.drawUTF8(4 - (int16_t)s_smoothLyricOffset, 35, s_lyricLine.c_str());
+      // Silky tempo-adaptive curve:
+      // For fast tempo lines (< 1500ms), shorten lead-in so it glides swiftly without delay
+      float leadIn = (s_lineDurationMs < 1500) ? 0.04f : 0.07f;
+      float leadOut = 1.0f - leadIn;
+      float curve;
+      if (rawProgress <= leadIn) {
+        curve = 0.0f;
+      } else if (rawProgress >= leadOut) {
+        curve = 1.0f;
+      } else {
+        float norm = (rawProgress - leadIn) / (leadOut - leadIn);
+        // Hermite smoothstep for organic acceleration and deceleration
+        curve = norm * norm * (3.0f - 2.0f * norm);
+      }
+
+      float targetOffset = curve * (float)maxOffset;
+
+      // Responsive lerp: fast response (0.45) tracks high tempo vocals tightly
+      s_smoothLyricOffset += (targetOffset - s_smoothLyricOffset) * 0.45f;
+
+      u8g2.setClipWindow(4, 24, 124, 38);
+      u8g2.drawUTF8(5 - (int16_t)s_smoothLyricOffset, 36, s_lyricLine.c_str());
       u8g2.setMaxClipWindow();
-    }
-
-    // Spotify-style 1px micro karaoke vocal progress bar below active lyric
-    if (s_isPlaying && s_lyricProgress > 0) {
-      int16_t barW = (s_lyricProgress * 116) / 100;
-      if (barW > 116) barW = 116;
-      u8g2.drawHLine(6, 38, barW);
     }
 
     // Next Line Preview (Upcoming Lyric with > indicator)
