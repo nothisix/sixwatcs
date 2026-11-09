@@ -141,3 +141,9 @@ Script akan otomatis mendeteksi port COM, membaca lagu yang sedang diputar di Sp
 2. Pastikan Bluetooth dan Lokasi HP aktif.
 3. Buka tab **Watches** -> **Pair New Device** -> cari **`Chronos ESP32`** (atau masukkan alamat MAC yang tertera di layar jam).
 4. Setelah terhubung, waktu, cuaca, notifikasi WhatsApp, dan status baterai HP akan langsung sinkron ke OLED.
+
+---
+
+## Lisensi
+
+Proyek ini dilisensikan di bawah lisensi [MIT](LICENSE).
