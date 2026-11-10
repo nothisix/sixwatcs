@@ -9,6 +9,7 @@ int8_t SettingsManager::s_selectedIndex = 0;
 uint8_t SettingsManager::s_afkIndex = 3;       // Default 5 Min
 uint8_t SettingsManager::s_contrastIndex = 1;  // Default MED (128)
 bool SettingsManager::s_inverted = false;      // Default Normal
+bool SettingsManager::s_flipped = false;       // Default Normal (0 deg)
 uint8_t SettingsManager::s_watchStyle = 0;     // Default Retro
 uint8_t SettingsManager::s_spotifyStyle = 0;   // Default Classic HUD
 bool SettingsManager::s_lyricsEnabled = true;  // Default Enabled
@@ -49,6 +50,7 @@ void SettingsManager::begin() {
   if (s_contrastIndex > 2) s_contrastIndex = 1;
 
   s_inverted = s_prefs.getBool("invert", false);
+  s_flipped = s_prefs.getBool("flip", false);
 
   s_watchStyle = s_prefs.getUChar("style", 0);
   if (s_watchStyle > 4) s_watchStyle = 0;
@@ -75,6 +77,7 @@ void SettingsManager::begin() {
 
 void SettingsManager::applyDisplaySettings() {
   u8g2.setContrast(CONTRAST_VALUES[s_contrastIndex]);
+  u8g2.setFlipMode(s_flipped ? 1 : 0);
   if (s_inverted) {
     u8g2.sendF("c", 0xa7); // Invert display
   } else {
@@ -93,6 +96,15 @@ uint8_t SettingsManager::getContrast() {
 
 bool SettingsManager::isInverted() {
   return s_inverted;
+}
+
+bool SettingsManager::isFlipped() {
+  return s_flipped;
+}
+
+void SettingsManager::setFlipped(bool flipped) {
+  s_flipped = flipped;
+  applyDisplaySettings();
 }
 
 uint8_t SettingsManager::getWatchStyle() {
@@ -163,6 +175,7 @@ void SettingsManager::saveSettings() {
   s_prefs.putUChar("afk_idx", s_afkIndex);
   s_prefs.putUChar("contrast", s_contrastIndex);
   s_prefs.putBool("invert", s_inverted);
+  s_prefs.putBool("flip", s_flipped);
   s_prefs.putUChar("style", s_watchStyle);
   s_prefs.putUChar("spot_style", s_spotifyStyle);
   s_prefs.putBool("lyr_en", s_lyricsEnabled);
@@ -185,10 +198,10 @@ void SettingsManager::resetHighScores() {
 }
 
 void SettingsManager::sendCurrentConfig() {
-  Serial.printf("{\"status\":\"ok\",\"type\":\"config\",\"sda\":%d,\"scl\":%d,\"btn_l\":%d,\"btn_ok\":%d,\"btn_r\":%d,\"clock_style\":%d,\"spotify_style\":%d,\"lyrics_enable\":%d,\"contrast\":%d,\"invert\":%d,\"afk\":%d}\n",
+  Serial.printf("{\"status\":\"ok\",\"type\":\"config\",\"sda\":%d,\"scl\":%d,\"btn_l\":%d,\"btn_ok\":%d,\"btn_r\":%d,\"clock_style\":%d,\"spotify_style\":%d,\"lyrics_enable\":%d,\"contrast\":%d,\"invert\":%d,\"flip\":%d,\"afk\":%d}\n",
                 s_sdaPin, s_sclPin, s_btnLeftPin, s_btnOkPin, s_btnRightPin,
                 s_watchStyle, s_spotifyStyle, s_lyricsEnabled ? 1 : 0,
-                s_contrastIndex, s_inverted ? 1 : 0, s_afkIndex);
+                s_contrastIndex, s_inverted ? 1 : 0, s_flipped ? 1 : 0, s_afkIndex);
 }
 
 bool SettingsManager::processSerialCommand(const String& cmd) {
@@ -255,6 +268,10 @@ bool SettingsManager::processSerialCommand(const String& cmd) {
     int inv = getIntVal("invert", -1);
     if (inv >= 0) s_inverted = (inv != 0);
 
+    int fl = getIntVal("flip", -1);
+    if (fl == -1) fl = getIntVal("rotate", -1);
+    if (fl >= 0) s_flipped = (fl != 0);
+
     saveSettings();
     applyDisplaySettings();
 
@@ -312,6 +329,11 @@ void SettingsManager::update(ButtonEvent event) {
 
       case ITEM_INVERT:
         s_inverted = !s_inverted;
+        applyDisplaySettings();
+        break;
+
+      case ITEM_FLIP:
+        s_flipped = !s_flipped;
         applyDisplaySettings();
         break;
 
@@ -392,6 +414,11 @@ void SettingsManager::render() {
       case ITEM_INVERT:
         snprintf(labelBuf, sizeof(labelBuf), "INVERT SCREEN");
         snprintf(valBuf, sizeof(valBuf), "< %s >", s_inverted ? "ON" : "OFF");
+        break;
+
+      case ITEM_FLIP:
+        snprintf(labelBuf, sizeof(labelBuf), "ROTATE 180");
+        snprintf(valBuf, sizeof(valBuf), "< %s >", s_flipped ? "180 DEG" : "NORMAL");
         break;
 
       case ITEM_WATCH_STYLE:

@@ -15,6 +15,7 @@ public:
   static unsigned long getAfkTimeoutMs();
   static uint8_t getContrast();
   static bool isInverted();
+  static bool isFlipped();
   static uint8_t getWatchStyle();
   static uint8_t getSpotifyStyle();
   static bool isLyricsEnabled();
@@ -31,6 +32,7 @@ public:
   static void setPins(uint8_t sda, uint8_t scl, uint8_t btnL, uint8_t btnOk, uint8_t btnR);
   static void setDisplayContrast(uint8_t idx);
   static void setInverted(bool inv);
+  static void setFlipped(bool flipped);
 
   // Actions
   static void saveSettings();
@@ -49,6 +51,7 @@ private:
     ITEM_AFK = 0,
     ITEM_CONTRAST,
     ITEM_INVERT,
+    ITEM_FLIP,
     ITEM_WATCH_STYLE,
     ITEM_SPOTIFY_STYLE,
     ITEM_LYRICS_MODE,
@@ -62,6 +65,7 @@ private:
   static uint8_t s_afkIndex;       // 0=1m, 1=2m, 2=3m, 3=5m, 4=10m, 5=OFF
   static uint8_t s_contrastIndex;  // 0=LOW(30), 1=MED(128), 2=HIGH(255)
   static bool s_inverted;          // false=Normal, true=Inverted
+  static bool s_flipped;           // false=Normal, true=Flipped 180 deg
   static uint8_t s_watchStyle;     // 0=Retro, 1=Minimal, 2=Analog, 3=Cyberpunk, 4=Big Glance
   static uint8_t s_spotifyStyle;   // 0=Classic HUD, 1=Cassette, 2=Lyrics Focus, 3=Compact Vinyl
   static bool s_lyricsEnabled;     // true=Show lyrics, false=Off

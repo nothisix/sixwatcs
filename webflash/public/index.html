@@ -1149,6 +1149,17 @@
           </label>
         </div>
 
+        <div class="option-row">
+          <div class="option-info">
+            <strong>Putar Layar 180° (Flip / Rotate)</strong>
+            <span>Memutar orientasi tampilan layar 180 derajat (atas menjadi bawah). Sangat berguna jika posisi layar dipasang terbalik.</span>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="cfg-flip">
+            <span class="slider"></span>
+          </label>
+        </div>
+
         <!-- Save Button -->
         <div class="save-bar">
           <button id="btn-save" class="btn-save-large" onclick="saveConfigToDevice()" disabled>
@@ -1405,6 +1416,7 @@
             if (data.lyrics_enable !== undefined) document.getElementById('cfg-lyrics').checked = (data.lyrics_enable === 1);
             if (data.contrast !== undefined) document.getElementById('cfg-contrast').value = String(data.contrast);
             if (data.invert !== undefined) document.getElementById('cfg-invert').checked = (data.invert === 1);
+            if (data.flip !== undefined) document.getElementById('cfg-flip').checked = (data.flip === 1);
 
             showToast("✅ Berhasil membaca konfigurasi aktif dari SIXWATCS!");
           } else if (data.status === "saved") {
@@ -1433,7 +1445,8 @@
         spotify_style: currentSpotifyStyle,
         lyrics_enable: document.getElementById('cfg-lyrics').checked ? 1 : 0,
         contrast: parseInt(document.getElementById('cfg-contrast').value),
-        invert: document.getElementById('cfg-invert').checked ? 1 : 0
+        invert: document.getElementById('cfg-invert').checked ? 1 : 0,
+        flip: document.getElementById('cfg-flip').checked ? 1 : 0
       };
 
       const jsonStr = JSON.stringify(payload);
