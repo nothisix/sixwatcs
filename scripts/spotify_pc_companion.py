@@ -4,15 +4,18 @@ ESP32-C3 Retro Arcade & OLED Watch - Spotify Real-time Synced Lyrics & Audio EQ
 1. Streams real-time synchronized LRC lyrics from LRCLIB to the ESP32 OLED display.
 2. Captures Windows system audio volume (pycaw) to drive audio-reactive equalizer bars.
 3. Listens for arcade hardware buttons (Left=Prev, OK=Play/Pause, Right=Next) to control Spotify.
+4. Resilient Dual-Engine: WinRT Media Session + Win32 Spotify Window Title fallback.
 """
 
 import sys
+import os
 import time
 import datetime
 import asyncio
 import threading
 import argparse
 import ctypes
+from ctypes import wintypes
 import random
 import re
 import requests
@@ -25,6 +28,7 @@ if sys.platform == "win32":
     except Exception:
         pass
 
+# WinRT Windows Media Session
 try:
     from winsdk.windows.media.control import (
         GlobalSystemMediaTransportControlsSessionManager as MediaManager,
@@ -34,11 +38,19 @@ try:
 except ImportError:
     HAS_WINSDK = False
 
+# Windows Core Audio Peak Metering
 try:
     from pycaw.pycaw import AudioUtilities, IAudioMeterInformation
     HAS_PYCAW = True
 except ImportError:
     HAS_PYCAW = False
+
+# Psutil for process checking
+try:
+    import psutil
+    HAS_PSUTIL = True
+except ImportError:
+    HAS_PSUTIL = False
 
 # Windows Virtual-Key Codes for Media Control fallback
 VK_MEDIA_NEXT_TRACK = 0xB0
@@ -46,8 +58,13 @@ VK_MEDIA_PREV_TRACK = 0xB1
 VK_MEDIA_PLAY_PAUSE = 0xB3
 KEYEVENTF_KEYUP = 0x0002
 
+user32 = ctypes.windll.user32
+
+LRCLIB_HEADERS = {
+    "User-Agent": "SIXWATCS-Companion/2.0 (ESP32-C3 Arcade Watch; https://github.com/nothisix/sixwatcs)"
+}
+
 def send_windows_media_key(vk_code):
-    user32 = ctypes.windll.user32
     user32.keybd_event(vk_code, 0, 0, 0)
     user32.keybd_event(vk_code, 0, KEYEVENTF_KEYUP, 0)
 
@@ -70,14 +87,11 @@ def normalize_text(text):
     if not text:
         return ""
     t = text
-    # Replace dangerous protocol delimiter
     t = t.replace('|', '/')
-    # Normalize unicode quotes and dashes to standard ASCII
     t = t.replace('’', "'").replace('‘', "'").replace('`', "'")
     t = t.replace('“', '"').replace('”', '"')
     t = t.replace('—', '-').replace('–', '-')
     t = t.replace('…', '...')
-    # Clean musical note symbols to avoid font rendering glitches
     t = t.replace('♪', '~').replace('♫', '~')
     return t.strip()
 
@@ -85,12 +99,10 @@ def clean_title(title):
     if not title:
         return ""
     t = title.replace('|', '/')
-    # Remove featured artists: (feat. ...), (with ...), [feat. ...]
     t = re.sub(r'\(feat\.[^)]*\)', '', t, flags=re.I)
     t = re.sub(r'\(with[^)]*\)', '', t, flags=re.I)
     t = re.sub(r'\[feat\.[^\]]*\]', '', t, flags=re.I)
     t = re.sub(r'\[with[^\]]*\]', '', t, flags=re.I)
-    # Remove remaster / mix / edit / live / soundtrack tags
     t = re.sub(r' - [0-9]{4} Remaster.*', '', t, flags=re.I)
     t = re.sub(r' - Remaster.*', '', t, flags=re.I)
     t = re.sub(r'\(.*?remaster.*?\)', '', t, flags=re.I)
@@ -104,7 +116,6 @@ def clean_title(title):
     t = re.sub(r' - Explicit.*', '', t, flags=re.I)
     t = re.sub(r' - Clean.*', '', t, flags=re.I)
     t = re.sub(r' - Original.*', '', t, flags=re.I)
-    # If title still has ' - ', take the main title before ' - ' if length is decent
     if ' - ' in t:
         parts = t.split(' - ')
         if len(parts[0].strip()) >= 2:
@@ -115,7 +126,6 @@ def clean_artist(artist):
     if not artist:
         return ""
     a = artist.replace('|', '/')
-    # Extract primary artist before comma, &, feat, x
     a = a.split(',')[0]
     a = a.split('&')[0]
     a = re.sub(r'\s+(feat\.|ft\.|with|x)\s+.*', '', a, flags=re.I)
@@ -143,7 +153,6 @@ def parse_lrc(text):
                     if lyric_part:
                         result.append((t_sec, lyric_part))
                     else:
-                        # Empty timestamp in LRC represents vocal break / solo
                         result.append((t_sec, "~ (Instrumental) ~"))
                 except ValueError:
                     pass
@@ -163,7 +172,6 @@ def get_lyrics_at_time(parsed_lrc, pos_sec):
             break
 
     if curr_idx == -1:
-        # Song is playing intro before vocals begin
         first_line = parsed_lrc[0][1] if parsed_lrc else ""
         first_t = parsed_lrc[0][0] if parsed_lrc else 1.0
         elapsed_ms = int(max(0.0, pos_sec) * 1000)
@@ -185,6 +193,57 @@ def get_lyrics_at_time(parsed_lrc, pos_sec):
 
     return curr_line, next_line, elapsed_ms, duration_ms
 
+# Win32 Window Fallback for Spotify
+def get_spotify_track_from_win32():
+    """Inspects Spotify desktop window title directly as fallback."""
+    found_info = None
+
+    def enum_cb(hwnd, lparam):
+        nonlocal found_info
+        length = user32.GetWindowTextLengthW(hwnd)
+        if length > 0:
+            buff = ctypes.create_unicode_buffer(length + 1)
+            user32.GetWindowTextW(hwnd, buff, length + 1)
+            title = buff.value
+            
+            cls_buff = ctypes.create_unicode_buffer(256)
+            user32.GetClassNameW(hwnd, cls_buff, 256)
+            cls_name = cls_buff.value
+
+            if cls_name == "Chrome_WidgetWin_0":
+                delims = [" - ", " \u2013 ", " \u2014 "]
+                for d in delims:
+                    if d in title:
+                        parts = title.split(d, 1)
+                        if len(parts) == 2 and len(parts[0].strip()) > 0 and len(parts[1].strip()) > 0:
+                            found_info = {
+                                "artist": parts[0].strip(),
+                                "title": parts[1].strip(),
+                                "is_playing": True,
+                                "app": "SPOTIFY",
+                                "source": "win32"
+                            }
+                            return 0
+                if title.strip().lower() in ["spotify", "spotify free", "spotify premium"]:
+                    if found_info is None:
+                        found_info = {
+                            "artist": "",
+                            "title": "",
+                            "is_playing": False,
+                            "app": "SPOTIFY",
+                            "source": "win32"
+                        }
+        return 1
+
+    try:
+        WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+        cb = WNDENUMPROC(enum_cb)
+        user32.EnumWindows(cb, 0)
+    except Exception:
+        pass
+
+    return found_info
+
 class MediaCompanion:
     def __init__(self, port, baud=115200):
         self.port = port
@@ -192,9 +251,11 @@ class MediaCompanion:
         self.ser = None
         self.running = True
 
+        self.media_manager = None
         self.current_session = None
         self.current_title = ""
         self.current_artist = ""
+        self.last_state_str = ""
         self.parsed_lyrics = []
         self.lyrics_cache = {}
 
@@ -202,16 +263,32 @@ class MediaCompanion:
         self.last_lrc_sent = ""
         self.last_lrc_time = 0
 
+        # Estimated position tracking for win32 fallback
+        self.estimated_pos = 0.0
+        self.last_pos_update = 0
+
         self.audio_meter = None
         self.last_meter_refresh = 0
+        self.printed_idle = False
 
     def connect(self):
         print(f"[PC Companion] Connecting to ESP32 on {self.port} at {self.baud} baud...")
         try:
             self.ser = serial.Serial(self.port, self.baud, timeout=0.1)
-            time.sleep(1.0)
+            time.sleep(0.8)
             print(f"[PC Companion] Connected successfully to {self.port}!")
             return True
+        except serial.SerialException as e:
+            err_msg = str(e)
+            print(f"\n[Error] Gagal membuka port {self.port}: {e}")
+            if "PermissionError" in err_msg or "Access is denied" in err_msg or "5" in err_msg:
+                print("=" * 65)
+                print(f" [PORT TERKUNCI] Port {self.port} sedang dipakai aplikasi lain!")
+                print(" --> Jika web SIXWATCS terbuka di browser:")
+                print("     Buka tab 'Device Configurator (Web Serial)' lalu klik 'Disconnect'!")
+                print("     Browser mengunci USB secara eksklusif sehingga script tidak bisa masuk.")
+                print("=" * 65 + "\n")
+            return False
         except Exception as e:
             print(f"[Error] Failed to connect to {self.port}: {e}")
             return False
@@ -272,7 +349,7 @@ class MediaCompanion:
         if not HAS_PYCAW:
             return 0.0
         now = time.time()
-        if not self.audio_meter or (now - self.last_meter_refresh > 5.0):
+        if not self.audio_meter or (now - self.last_meter_refresh > 4.0):
             self.last_meter_refresh = now
             try:
                 sessions = AudioUtilities.GetAllSessions()
@@ -301,7 +378,12 @@ class MediaCompanion:
 
         # 1. Exact match with original artist & title
         try:
-            r = requests.get("https://lrclib.net/api/get", params={"artist_name": artist, "track_name": title}, timeout=2.0)
+            r = requests.get(
+                "https://lrclib.net/api/get",
+                params={"artist_name": artist, "track_name": title},
+                headers=LRCLIB_HEADERS,
+                timeout=3.0
+            )
             if r.status_code == 200:
                 data = r.json()
                 if data.get("syncedLyrics"):
@@ -313,10 +395,15 @@ class MediaCompanion:
         except Exception:
             pass
 
-        # 2. Exact match with cleaned artist & title (removes Remastered, feat., etc.)
+        # 2. Exact match with cleaned artist & title
         if (c_art != artist) or (c_tit != title):
             try:
-                r = requests.get("https://lrclib.net/api/get", params={"artist_name": c_art, "track_name": c_tit}, timeout=2.0)
+                r = requests.get(
+                    "https://lrclib.net/api/get",
+                    params={"artist_name": c_art, "track_name": c_tit},
+                    headers=LRCLIB_HEADERS,
+                    timeout=3.0
+                )
                 if r.status_code == 200:
                     data = r.json()
                     if data.get("syncedLyrics"):
@@ -332,7 +419,12 @@ class MediaCompanion:
         search_query = f"{c_art} {c_tit}".strip()
         if search_query:
             try:
-                r = requests.get("https://lrclib.net/api/search", params={"q": search_query}, timeout=2.5)
+                r = requests.get(
+                    "https://lrclib.net/api/search",
+                    params={"q": search_query},
+                    headers=LRCLIB_HEADERS,
+                    timeout=3.0
+                )
                 if r.status_code == 200:
                     items = r.json()
                     for item in items:
@@ -348,7 +440,12 @@ class MediaCompanion:
         # 4. Search query with clean title only
         if c_tit and c_tit != search_query:
             try:
-                r = requests.get("https://lrclib.net/api/search", params={"q": c_tit}, timeout=2.5)
+                r = requests.get(
+                    "https://lrclib.net/api/search",
+                    params={"q": c_tit},
+                    headers=LRCLIB_HEADERS,
+                    timeout=3.0
+                )
                 if r.status_code == 200:
                     items = r.json()
                     for item in items:
@@ -362,7 +459,6 @@ class MediaCompanion:
                 pass
 
         print(f"[Lyrics] No synced lyrics found for '{title}' by '{artist}'.")
-        # Return fallback placeholder so UI clearly communicates status with zero bugs
         fallback = [
             (0.0, "(No synced lyrics found)"),
             (8.0, "(Enjoy the music ~)")
@@ -370,101 +466,174 @@ class MediaCompanion:
         self.lyrics_cache[cache_key] = fallback
         return fallback
 
-    async def get_current_media_info(self):
+    async def get_media_manager(self):
+        """Safely gets or refreshes WinRT MediaManager with timeout guard."""
         if not HAS_WINSDK:
             return None
+        if self.media_manager:
+            return self.media_manager
         try:
-            mgr = await MediaManager.request_async()
-            session = mgr.get_current_session()
-            if not session:
-                sessions = mgr.get_sessions()
-                if sessions:
-                    session = sessions[0]
-            if not session:
-                return None
+            self.media_manager = await asyncio.wait_for(MediaManager.request_async(), timeout=2.0)
+            return self.media_manager
+        except Exception:
+            self.media_manager = None
+            return None
 
-            self.current_session = session
-            props = await session.try_get_media_properties_async()
-            playback = session.get_playback_info()
-            timeline = session.get_timeline_properties()
-            app_id = (session.source_app_user_model_id or "").lower()
+    async def get_current_media_info(self):
+        """Detects playing media using WinRT SMTC with fallback to Win32 Spotify Window Title."""
+        now = time.time()
 
-            app_name = "SPOTIFY" if "spotify" in app_id else "MEDIA"
-            is_playing = (playback.playback_status == PlaybackStatus.PLAYING)
-            title = props.title.strip() if props.title else ""
-            artist = props.artist.strip() if props.artist else ""
-            pos_sec = timeline.position.total_seconds() if timeline and timeline.position else 0.0
+        # Engine A: WinRT SMTC
+        if HAS_WINSDK:
+            try:
+                mgr = await self.get_media_manager()
+                if mgr:
+                    chosen_session = None
+                    is_playing = False
+                    
+                    # 1. Prefer current session if playing
+                    curr = mgr.get_current_session()
+                    if curr:
+                        pb = curr.get_playback_info()
+                        if pb and pb.playback_status == PlaybackStatus.PLAYING:
+                            chosen_session = curr
+                            is_playing = True
 
-            # Precise Real-time Timestamp Extrapolation:
-            # Windows Media Session updates `last_updated_time` periodically.
-            # Adding elapsed time since last_updated_time removes the 1-2s delay!
-            if is_playing and timeline and timeline.last_updated_time:
-                now_utc = datetime.datetime.now(datetime.timezone.utc)
-                elapsed = (now_utc - timeline.last_updated_time).total_seconds()
-                if 0.0 <= elapsed < 15.0:
-                    pos_sec += elapsed
+                    # 2. Iterate all sessions to find Spotify or any playing media
+                    if not chosen_session:
+                        sessions = mgr.get_sessions()
+                        for s in sessions:
+                            app_id = (s.source_app_user_model_id or "").lower()
+                            try:
+                                pb = s.get_playback_info()
+                                pb_status = pb.playback_status if pb else None
+                                if "spotify" in app_id:
+                                    chosen_session = s
+                                    is_playing = (pb_status == PlaybackStatus.PLAYING)
+                                    if is_playing:
+                                        break
+                                elif pb_status == PlaybackStatus.PLAYING and not chosen_session:
+                                    chosen_session = s
+                                    is_playing = True
+                            except Exception:
+                                continue
 
-            # Add +0.15s lead-time compensation for serial transmission & frame rendering
-            if is_playing:
-                pos_sec += 0.15
+                    if chosen_session:
+                        self.current_session = chosen_session
+                        props = await asyncio.wait_for(chosen_session.try_get_media_properties_async(), timeout=0.8)
+                        title = props.title.strip() if (props and props.title) else ""
+                        artist = props.artist.strip() if (props and props.artist) else ""
+                        
+                        if title:
+                            app_id = (chosen_session.source_app_user_model_id or "").lower()
+                            app_name = "SPOTIFY" if "spotify" in app_id else "MEDIA"
+                            
+                            pos_sec = 0.0
+                            try:
+                                timeline = chosen_session.get_timeline_properties()
+                                if timeline and timeline.position:
+                                    pos_sec = timeline.position.total_seconds()
+                                if is_playing and timeline and timeline.last_updated_time:
+                                    now_utc = datetime.datetime.now(datetime.timezone.utc)
+                                    elapsed = (now_utc - timeline.last_updated_time).total_seconds()
+                                    if 0.0 <= elapsed < 15.0:
+                                        pos_sec += elapsed
+                                if is_playing:
+                                    pos_sec += 0.15
+                            except Exception:
+                                pos_sec = self.estimated_pos
 
-            if not title:
-                return None
+                            self.estimated_pos = pos_sec
+                            self.last_pos_update = now
+
+                            return {
+                                "title": title,
+                                "artist": artist,
+                                "app": app_name,
+                                "is_playing": is_playing,
+                                "pos_sec": pos_sec,
+                                "source": "winrt"
+                            }
+            except Exception:
+                # If WinRT fails or hangs, reset manager cache to avoid persistent freeze
+                self.media_manager = None
+
+        # Engine B: Win32 Window Title Fallback
+        win32_track = get_spotify_track_from_win32()
+        if win32_track and win32_track.get("title"):
+            track_title = win32_track["title"]
+            track_artist = win32_track["artist"]
+
+            # Update estimated position
+            if (track_title != self.current_title) or (track_artist != self.current_artist):
+                self.estimated_pos = 0.0
+                self.last_pos_update = now
+            else:
+                if self.last_pos_update > 0 and win32_track["is_playing"]:
+                    self.estimated_pos += (now - self.last_pos_update)
+                self.last_pos_update = now
 
             return {
-                "title": title,
-                "artist": artist,
-                "app": app_name,
-                "is_playing": is_playing,
-                "pos_sec": pos_sec
+                "title": track_title,
+                "artist": track_artist,
+                "app": "SPOTIFY",
+                "is_playing": win32_track["is_playing"],
+                "pos_sec": self.estimated_pos,
+                "source": "win32"
             }
-        except Exception:
-            return None
+
+        return None
 
     async def run(self):
         t = threading.Thread(target=self.serial_listener_thread, daemon=True)
         t.start()
 
-        print("\n" + "=" * 60)
-        print("   ESP32-C3 SPOTIFY SYNCED LYRICS & AUDIO-REACTIVE EQ")
-        print("=" * 60)
+        print("\n" + "=" * 62)
+        print("   SIXWATCS - ESP32-C3 SPOTIFY SYNCED LYRICS & AUDIO EQ")
+        print("=" * 62)
         print(f" Serial Port : {self.port}")
         print(" Lyrics API  : LRCLIB (Real-time synchronized LRC)")
         print(" Audio Meter : Windows Core Audio Peak (pycaw)")
+        print(" Detection   : Dual Engine (WinRT SMTC + Win32 Fallback)")
         print(" Controls    : Left=Prev | OK=Play/Pause | Right=Next")
         print(" Press Ctrl+C in this terminal to exit.")
-        print("=" * 60 + "\n")
+        print("=" * 62 + "\n")
+
+        print("[Status] Menghubungkan ke media player / Spotify...", flush=True)
 
         while self.running:
             media = await self.get_current_media_info()
             now = time.time()
 
             if media:
+                self.printed_idle = False
                 state_str = "PLAY" if media["is_playing"] else "PAUSE"
                 track_id = f"{media['artist']}|{media['title']}"
+                is_new_track = (track_id != f"{self.current_artist}|{self.current_title}")
+                state_changed = (state_str != self.last_state_str)
 
-                # New song detected
-                if track_id != f"{self.current_artist}|{self.current_title}":
+                # 1. New track detected OR Play/Pause state toggled
+                if is_new_track or state_changed:
                     self.current_title = media["title"]
                     self.current_artist = media["artist"]
+                    self.last_state_str = state_str
 
-                    # 1. Send SONG packet FIRST with 0ms delay so OLED title updates immediately
                     safe_artist = self.current_artist.replace('|', '/')
                     safe_title = self.current_title.replace('|', '/')
                     song_pkt = f"SONG:{state_str}|{safe_artist}|{safe_title}|{media['app']}"
                     self.send_to_esp32(song_pkt)
                     self.last_song_packet = song_pkt
 
-                    # 2. Immediately clear old lyrics and show searching status on OLED
-                    self.send_to_esp32("LRC:Searching lyrics...||3,4,5,4,3|0|1000")
-                    print(f"\n[Track Change] {self.current_title} - {self.current_artist}")
-
-                    # 3. Fetch lyrics with robust 4-tier fallback
-                    self.parsed_lyrics = self.fetch_lyrics(self.current_artist, self.current_title)
+                    if is_new_track:
+                        # Clear old lyrics immediately and inform OLED
+                        self.send_to_esp32("LRC:Searching lyrics...||3,4,5,4,3|0|1000")
+                        print(f"\n[Track] {self.current_title} - {self.current_artist} [{state_str}] ({media['source']})")
+                        self.parsed_lyrics = self.fetch_lyrics(self.current_artist, self.current_title)
+                    else:
+                        print(f"\n[State Change] {state_str} -> {self.current_title}")
 
                 # Audio-reactive peak calculation
                 peak = self.get_audio_peak() if media["is_playing"] else 0.0
-                # Scale 5 EQ bars between 1 and 8
                 b0 = min(8, max(1, int(peak * 8.5 + random.uniform(0, 0.4))))
                 b1 = min(8, max(1, int(peak * 10.0 + random.uniform(0, 0.5))))
                 b2 = min(8, max(1, int(peak * 9.0 + random.uniform(0, 0.4))))
@@ -474,10 +643,9 @@ class MediaCompanion:
                 # Get synchronized lyric line, next line, and continuous tempo timing
                 curr_lrc, next_lrc, elapsed_ms, duration_ms = get_lyrics_at_time(self.parsed_lyrics, media["pos_sec"])
 
-                # Send LRC, EQ stream, and timing packet every 35ms (~28 FPS) for silky sync
+                # Send LRC, EQ stream, and timing packet every 35ms (~28 FPS)
                 if now - self.last_lrc_time >= 0.035:
                     self.last_lrc_time = now
-                    # Format: LRC:<current_line>|<next_line>|<b0>,<b1>,<b2>,<b3>,<b4>|<elapsed_ms>|<duration_ms>
                     lrc_packet = f"LRC:{curr_lrc}|{next_lrc}|{b0},{b1},{b2},{b3},{b4}|{elapsed_ms}|{duration_ms}"
                     self.send_to_esp32(lrc_packet)
 
@@ -494,9 +662,13 @@ class MediaCompanion:
                 if self.current_title != "":
                     self.current_title = ""
                     self.current_artist = ""
+                    self.last_state_str = ""
                     self.parsed_lyrics = []
                     self.send_to_esp32("SONG:STOP|||")
-                    print("\r[IDLE] Waiting for Spotify or media playback...", end="", flush=True)
+                    print("\r[IDLE] Lagu berhenti. Menunggu lagu diputar di Spotify...", end="", flush=True)
+                elif not self.printed_idle:
+                    print("\r[IDLE] Menunggu lagu diputar di Spotify / Media Player...", end="", flush=True)
+                    self.printed_idle = True
 
             await asyncio.sleep(0.08)
 
@@ -507,14 +679,14 @@ class MediaCompanion:
         print("\n[PC Companion] Disconnected.")
 
 def main():
-    parser = argparse.ArgumentParser(description="ESP32-C3 Spotify Synced Lyrics & Audio EQ Companion")
+    parser = argparse.ArgumentParser(description="SIXWATCS - ESP32-C3 Spotify Synced Lyrics & Audio EQ Companion")
     parser.add_argument("--port", type=str, default=None, help="COM port (e.g. COM5)")
     parser.add_argument("--baud", type=int, default=115200, help="Baud rate (default 115200)")
     args = parser.parse_args()
 
     port = args.port or find_esp32_port()
     if not port:
-        print("[Error] No COM port found. Please plug in your ESP32-C3 SuperMini via USB!")
+        print("[Error] Tidak menemukan COM port. Colokkan kabel USB ESP32-C3 kamu!")
         sys.exit(1)
 
     companion = MediaCompanion(port, args.baud)
@@ -524,7 +696,7 @@ def main():
     try:
         asyncio.run(companion.run())
     except KeyboardInterrupt:
-        print("\n[PC Companion] Stopped by user.")
+        print("\n[PC Companion] Dihentikan oleh user.")
     finally:
         companion.close()
 
