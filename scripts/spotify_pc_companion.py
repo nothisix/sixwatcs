@@ -1,16 +1,20 @@
 """
 ESP32-C3 Retro Arcade & OLED Watch - Spotify Real-time Synced Lyrics & Audio EQ
 ================================================================================
-1. High-Performance Dedicated Worker Thread with WinSta0 Desktop Attachment.
+1. Hybrid Tracking Engine:
+   - SMTC Background Worker: Auto-detects seekbar drags/skips directly from Windows Media.
+   - Win32 Desktop Window Watcher: Zero-latency instantaneous track detection fallback.
 2. Synchronized LRC lyrics from LRCLIB streaming directly to ESP32 OLED.
 3. Live audio-reactive 5-band Equalizer using Windows Core Audio (pycaw).
-4. Full hardware button control: Left=Prev, OK=Play/Pause, Right=Next.
+4. Full hardware button control: Left=Prev, OK=Play/Pause, Right=Next, Hold=Nudge.
 5. Interactive Live-Sync Hotkeys: Instant seek/resync using keyboard (+ / - / 0..9).
 """
 
 import sys
 import os
 import time
+import datetime
+import asyncio
 import threading
 import argparse
 import ctypes
@@ -38,6 +42,12 @@ try:
     HAS_PYCAW = True
 except ImportError:
     HAS_PYCAW = False
+
+try:
+    import winsdk.windows.media.control as wmc
+    HAS_WINSDK = True
+except ImportError:
+    HAS_WINSDK = False
 
 if sys.platform == "win32":
     try:
@@ -209,6 +219,10 @@ class MediaCompanion:
         self.last_tick = 0.0
         self.timer_paused = False
 
+        # SMTC state
+        self.smtc_active = False
+        self.last_smtc_seek_check = 0.0
+
         self.last_lrc_time = 0
         self.audio_meter = None
         self.last_meter_refresh = 0
@@ -258,10 +272,12 @@ class MediaCompanion:
                             send_windows_media_key(VK_MEDIA_PLAY_PAUSE)
                         elif cmd == "NEXT":
                             send_windows_media_key(VK_MEDIA_NEXT_TRACK)
-                            self.track_elapsed = 0.0
+                            with self.lock:
+                                self.track_elapsed = 0.0
                         elif cmd == "PREV":
                             send_windows_media_key(VK_MEDIA_PREV_TRACK)
-                            self.track_elapsed = 0.0
+                            with self.lock:
+                                self.track_elapsed = 0.0
                         elif cmd == "NUDGE_FWD":
                             self.nudge_lyrics(3.0)
                         elif cmd == "NUDGE_BACK":
@@ -276,7 +292,7 @@ class MediaCompanion:
             m = int(self.track_elapsed // 60)
             s = int(self.track_elapsed % 60)
             sign = "+" if delta_sec > 0 else ""
-            print(f"\n>>> [SYNC ADJUST] Lirik digeser {sign}{delta_sec:.1f}s -> Waktu sekarang [{m:02d}:{s:02d}] <<<", flush=True)
+            print(f"\n>>> [SYNC ADJUST] Lirik digeser {sign}{delta_sec:.1f}s -> Waktu [{m:02d}:{s:02d}] <<<", flush=True)
 
     def set_lyrics_percent(self, pct):
         with self.lock:
@@ -287,6 +303,69 @@ class MediaCompanion:
             m = int(self.track_elapsed // 60)
             s = int(self.track_elapsed % 60)
             print(f"\n>>> [SYNC JUMP] Lompat ke {pct}% lagu -> [{m:02d}:{s:02d}] <<<", flush=True)
+
+    def smtc_worker_thread(self):
+        """Monitors Windows SMTC for real-time seekbar positions."""
+        if not HAS_WINSDK:
+            return
+
+        async def _run_smtc():
+            mgr = None
+            try:
+                mgr = await asyncio.wait_for(wmc.GlobalSystemMediaTransportControlsSessionManager.request_async(), timeout=3.0)
+                self.smtc_active = True
+                print("[SMTC Engine] Windows Media Transport Control aktif (Auto-Seek sinkron otomatis)!")
+            except Exception:
+                # If SMTC is blocked, Win32 window scanner continues seamlessly
+                return
+
+            last_checked_track = ""
+
+            while self.running:
+                try:
+                    sessions = mgr.get_sessions()
+                    spotify_session = None
+                    for s in sessions:
+                        app_id = (s.source_app_user_model_id or "").lower()
+                        if "spotify" in app_id:
+                            spotify_session = s
+                            break
+
+                    if spotify_session:
+                        tl = spotify_session.get_timeline_properties()
+                        pb = spotify_session.get_playback_info()
+                        is_playing = (pb.playback_status == wmc.GlobalSystemMediaTransportControlsSessionPlaybackStatus.PLAYING) if pb else False
+
+                        if tl and tl.position:
+                            pos_sec = tl.position.total_seconds()
+                            if is_playing and tl.last_updated_time:
+                                now_utc = datetime.datetime.now(datetime.timezone.utc)
+                                elapsed = (now_utc - tl.last_updated_time).total_seconds()
+                                if 0.0 <= elapsed < 15.0:
+                                    pos_sec += elapsed
+
+                            with self.lock:
+                                # Detect external seek (user dragged Spotify seekbar)
+                                diff = abs(self.track_elapsed - pos_sec)
+                                if diff > 1.8 and self.is_playing:
+                                    old_m, old_s = int(self.track_elapsed // 60), int(self.track_elapsed % 60)
+                                    new_m, new_s = int(pos_sec // 60), int(pos_sec % 60)
+                                    self.track_elapsed = pos_sec
+                                    print(f"\n>>> [AUTO-SYNC SPOTIFY] Seek terdeteksi: [{old_m:02d}:{old_s:02d}] -> [{new_m:02d}:{new_s:02d}] <<<", flush=True)
+
+                except Exception:
+                    pass
+
+                await asyncio.sleep(0.35)
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(_run_smtc())
+        except Exception:
+            pass
+        finally:
+            loop.close()
 
     def window_scanner_thread(self):
         """Dedicated thread with exclusive WinSta0\\Default desktop attachment."""
@@ -519,7 +598,11 @@ class MediaCompanion:
         t_scanner = threading.Thread(target=self.window_scanner_thread, daemon=True)
         t_scanner.start()
 
-        # 3. Start Keyboard interactive resync listener
+        # 3. Start SMTC real-time seek worker thread
+        t_smtc = threading.Thread(target=self.smtc_worker_thread, daemon=True)
+        t_smtc.start()
+
+        # 4. Start Keyboard interactive resync listener
         t_kb = threading.Thread(target=self.keyboard_input_thread, daemon=True)
         t_kb.start()
 
@@ -527,7 +610,7 @@ class MediaCompanion:
         print("   SIXWATCS - ESP32-C3 SPOTIFY SYNCED LYRICS & AUDIO EQ")
         print("=" * 64)
         print(f" Serial Port : {self.port}")
-        print(" Engine      : Win32 Worker Thread (Zero Latency)")
+        print(" Engine      : Dual Engine (SMTC Auto-Seek + Win32 Watcher)")
         print(" Lyrics API  : LRCLIB (Real-time synchronized LRC)")
         print(" Audio Meter : Windows Core Audio Peak (pycaw)")
         print("-" * 64)
