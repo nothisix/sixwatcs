@@ -5,6 +5,7 @@ ESP32-C3 Retro Arcade & OLED Watch - Spotify Real-time Synced Lyrics & Audio EQ
 2. Synchronized LRC lyrics from LRCLIB streaming directly to ESP32 OLED.
 3. Live audio-reactive 5-band Equalizer using Windows Core Audio (pycaw).
 4. Full hardware button control: Left=Prev, OK=Play/Pause, Right=Next.
+5. Interactive Live-Sync Hotkeys: Instant seek/resync using keyboard (+ / - / 0..9).
 """
 
 import sys
@@ -19,6 +20,12 @@ import re
 import requests
 import serial
 import serial.tools.list_ports
+
+try:
+    import msvcrt
+    HAS_MSVCRT = True
+except ImportError:
+    HAS_MSVCRT = False
 
 try:
     import psutil
@@ -196,9 +203,11 @@ class MediaCompanion:
         self.last_state_str = ""
         self.parsed_lyrics = []
         self.lyrics_cache = {}
+        self.track_duration = 0.0
 
         self.track_elapsed = 0.0
         self.last_tick = 0.0
+        self.timer_paused = False
 
         self.last_lrc_time = 0
         self.audio_meter = None
@@ -249,11 +258,35 @@ class MediaCompanion:
                             send_windows_media_key(VK_MEDIA_PLAY_PAUSE)
                         elif cmd == "NEXT":
                             send_windows_media_key(VK_MEDIA_NEXT_TRACK)
+                            self.track_elapsed = 0.0
                         elif cmd == "PREV":
                             send_windows_media_key(VK_MEDIA_PREV_TRACK)
+                            self.track_elapsed = 0.0
+                        elif cmd == "NUDGE_FWD":
+                            self.nudge_lyrics(3.0)
+                        elif cmd == "NUDGE_BACK":
+                            self.nudge_lyrics(-3.0)
             except Exception:
                 if self.running:
                     time.sleep(0.1)
+
+    def nudge_lyrics(self, delta_sec):
+        with self.lock:
+            self.track_elapsed = max(0.0, self.track_elapsed + delta_sec)
+            m = int(self.track_elapsed // 60)
+            s = int(self.track_elapsed % 60)
+            sign = "+" if delta_sec > 0 else ""
+            print(f"\n>>> [SYNC ADJUST] Lirik digeser {sign}{delta_sec:.1f}s -> Waktu sekarang [{m:02d}:{s:02d}] <<<", flush=True)
+
+    def set_lyrics_percent(self, pct):
+        with self.lock:
+            if self.track_duration > 0:
+                self.track_elapsed = (pct / 100.0) * self.track_duration
+            else:
+                self.track_elapsed = pct * 2.0
+            m = int(self.track_elapsed // 60)
+            s = int(self.track_elapsed % 60)
+            print(f"\n>>> [SYNC JUMP] Lompat ke {pct}% lagu -> [{m:02d}:{s:02d}] <<<", flush=True)
 
     def window_scanner_thread(self):
         """Dedicated thread with exclusive WinSta0\\Default desktop attachment."""
@@ -314,6 +347,60 @@ class MediaCompanion:
 
             time.sleep(0.08)
 
+    def keyboard_input_thread(self):
+        """Reads non-blocking interactive keys in terminal to nudge/seek lyrics in real time."""
+        if not HAS_MSVCRT:
+            return
+
+        while self.running:
+            try:
+                if msvcrt.kbhit():
+                    ch = msvcrt.getch()
+                    # Handle arrow keys (first byte 0x00 or 0xE0)
+                    if ch in [b'\x00', b'\xe0']:
+                        arrow = msvcrt.getch()
+                        if arrow == b'M':  # Right Arrow -> +3s
+                            self.nudge_lyrics(3.0)
+                        elif arrow == b'K':  # Left Arrow -> -3s
+                            self.nudge_lyrics(-3.0)
+                        elif arrow == b'H':  # Up Arrow -> +10s
+                            self.nudge_lyrics(10.0)
+                        elif arrow == b'P':  # Down Arrow -> -10s
+                            self.nudge_lyrics(-10.0)
+                        continue
+
+                    key = ch.decode('utf-8', errors='ignore').lower()
+
+                    if key in ['+', '=', ']', 'd']:
+                        self.nudge_lyrics(3.0)
+                    elif key in ['-', '_', '[', 'a']:
+                        self.nudge_lyrics(-3.0)
+                    elif key == ' ':
+                        self.timer_paused = not self.timer_paused
+                        state = "DI-PAUSE" if self.timer_paused else "DILANJUTKAN"
+                        print(f"\n>>> [TIMER {state}] <<<", flush=True)
+                    elif key in ['0', 'r']:
+                        with self.lock:
+                            self.track_elapsed = 0.0
+                        print(f"\n>>> [SYNC RESET] Lirik direset ke 00:00 (Awal Lagu) <<<", flush=True)
+                    elif key in ['1', '2', '3', '4', '5', '6', '7', '8', '9']:
+                        pct = int(key) * 10
+                        self.set_lyrics_percent(pct)
+                    elif key == 'h':
+                        print("\n" + "-" * 50)
+                        print(" KONTROL SINKRONISASI CEPAT (KEYBOARD):")
+                        print("  [+] atau [D] atau [Panah Kanan] : Maju +3 detik")
+                        print("  [-] atau [A] atau [Panah Kiri]  : Mundur -3 detik")
+                        print("  [0] atau [R]                    : Reset ke 00:00")
+                        print("  [1] s/d [9]                     : Lompat ke 10% .. 90% lagu")
+                        print("  [Space]                         : Pause / Resume timer")
+                        print("-" * 50 + "\n", flush=True)
+
+            except Exception:
+                pass
+
+            time.sleep(0.04)
+
     def get_audio_peak(self):
         if not HAS_PYCAW:
             return 0.0
@@ -339,7 +426,9 @@ class MediaCompanion:
     def fetch_lyrics(self, artist, title):
         cache_key = f"{artist}|{title}".lower()
         if cache_key in self.lyrics_cache:
-            return self.lyrics_cache[cache_key]
+            parsed, dur = self.lyrics_cache[cache_key]
+            self.track_duration = dur
+            return parsed
 
         c_art = clean_artist(artist)
         c_tit = clean_title(title)
@@ -355,11 +444,13 @@ class MediaCompanion:
             )
             if r.status_code == 200:
                 data = r.json()
+                dur = float(data.get("duration") or 0.0)
                 if data.get("syncedLyrics"):
                     parsed = parse_lrc(data["syncedLyrics"])
                     if parsed:
-                        print(f"[Lyrics] Found {len(parsed)} synced lyric lines (Exact Match)!")
-                        self.lyrics_cache[cache_key] = parsed
+                        print(f"[Lyrics] Found {len(parsed)} synced lyric lines (Exact Match)! Dur: {int(dur)}s")
+                        self.lyrics_cache[cache_key] = (parsed, dur)
+                        self.track_duration = dur
                         return parsed
         except Exception:
             pass
@@ -375,11 +466,13 @@ class MediaCompanion:
                 )
                 if r.status_code == 200:
                     data = r.json()
+                    dur = float(data.get("duration") or 0.0)
                     if data.get("syncedLyrics"):
                         parsed = parse_lrc(data["syncedLyrics"])
                         if parsed:
-                            print(f"[Lyrics] Found {len(parsed)} synced lyric lines (Cleaned: '{c_tit}' by '{c_art}')!")
-                            self.lyrics_cache[cache_key] = parsed
+                            print(f"[Lyrics] Found {len(parsed)} synced lyric lines (Cleaned)! Dur: {int(dur)}s")
+                            self.lyrics_cache[cache_key] = (parsed, dur)
+                            self.track_duration = dur
                             return parsed
             except Exception:
                 pass
@@ -398,10 +491,12 @@ class MediaCompanion:
                     items = r.json()
                     for item in items:
                         if item.get("syncedLyrics"):
+                            dur = float(item.get("duration") or 0.0)
                             parsed = parse_lrc(item["syncedLyrics"])
                             if parsed:
-                                print(f"[Lyrics] Found {len(parsed)} synced lyric lines via search ('{search_query}')!")
-                                self.lyrics_cache[cache_key] = parsed
+                                print(f"[Lyrics] Found {len(parsed)} synced lyric lines via search! Dur: {int(dur)}s")
+                                self.lyrics_cache[cache_key] = (parsed, dur)
+                                self.track_duration = dur
                                 return parsed
             except Exception:
                 pass
@@ -411,7 +506,8 @@ class MediaCompanion:
             (0.0, "(No synced lyrics found)"),
             (8.0, "(Enjoy the music ~)")
         ]
-        self.lyrics_cache[cache_key] = fallback
+        self.lyrics_cache[cache_key] = (fallback, 0.0)
+        self.track_duration = 0.0
         return fallback
 
     def run(self):
@@ -423,16 +519,26 @@ class MediaCompanion:
         t_scanner = threading.Thread(target=self.window_scanner_thread, daemon=True)
         t_scanner.start()
 
-        print("\n" + "=" * 62)
+        # 3. Start Keyboard interactive resync listener
+        t_kb = threading.Thread(target=self.keyboard_input_thread, daemon=True)
+        t_kb.start()
+
+        print("\n" + "=" * 64)
         print("   SIXWATCS - ESP32-C3 SPOTIFY SYNCED LYRICS & AUDIO EQ")
-        print("=" * 62)
+        print("=" * 64)
         print(f" Serial Port : {self.port}")
         print(" Engine      : Win32 Worker Thread (Zero Latency)")
         print(" Lyrics API  : LRCLIB (Real-time synchronized LRC)")
         print(" Audio Meter : Windows Core Audio Peak (pycaw)")
-        print(" Controls    : Left=Prev | OK=Play/Pause | Right=Next")
-        print(" Press Ctrl+C in this terminal to exit.")
-        print("=" * 62 + "\n")
+        print("-" * 64)
+        print(" KONTROL SINKRONISASI CEPAT (KEYBOARD / ESP32):")
+        print("  [+] / [Panah Kanan] / Tahan Kanan di Jam : Maju +3 detik")
+        print("  [-] / [Panah Kiri]  / Tahan Kiri di Jam  : Mundur -3 detik")
+        print("  [0] atau [R]                             : Reset ke 00:00 (Awal lagu)")
+        print("  [1] s/d [9]                              : Lompat 10% s/d 90% lagu")
+        print("  [Space]                                  : Pause/Resume timer")
+        print("  [H]                                      : Bantuan kontrol")
+        print("=" * 64 + "\n")
 
         self.last_tick = time.time()
 
@@ -470,8 +576,9 @@ class MediaCompanion:
                     else:
                         print(f"\n[Resumed] {self.current_title}")
 
-                # Accumulate real-time elapsed seconds
-                self.track_elapsed += dt
+                # Accumulate real-time elapsed seconds (if not paused manually)
+                if not self.timer_paused:
+                    self.track_elapsed += dt
 
                 # Audio-reactive peak calculation
                 peak = self.get_audio_peak()
@@ -494,9 +601,14 @@ class MediaCompanion:
                     vu_meter = "█" * vu_bars + "░" * (12 - vu_bars)
                     m = int(self.track_elapsed // 60)
                     s = int(self.track_elapsed % 60)
-                    time_tag = f"[{m:02d}:{s:02d}]"
+                    if self.track_duration > 0:
+                        dm = int(self.track_duration // 60)
+                        ds = int(self.track_duration % 60)
+                        time_tag = f"[{m:02d}:{s:02d}/{dm:02d}:{ds:02d}]"
+                    else:
+                        time_tag = f"[{m:02d}:{s:02d}]"
                     lrc_display = curr_lrc if curr_lrc else "..."
-                    print(f"\r{time_tag} [{vu_meter}] ♫ {lrc_display[:38]:<38}", end="", flush=True)
+                    print(f"\r{time_tag} [{vu_meter}] ♫ {lrc_display[:34]:<34}", end="", flush=True)
 
             else:
                 if self.current_title != "":

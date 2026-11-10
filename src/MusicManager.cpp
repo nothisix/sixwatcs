@@ -378,6 +378,18 @@ void MusicManager::updateUI(ButtonEvent event) {
     sendNext();
   } else if (event == BTN_CLICK) {
     sendPlayPause();
+  } else if (event == BTN_LEFT_HOLD) {
+    static unsigned long lastNudgeL = 0;
+    if (millis() - lastNudgeL >= 350) {
+      lastNudgeL = millis();
+      Serial.println("CMD:NUDGE_BACK");
+    }
+  } else if (event == BTN_RIGHT_HOLD) {
+    static unsigned long lastNudgeR = 0;
+    if (millis() - lastNudgeR >= 350) {
+      lastNudgeR = millis();
+      Serial.println("CMD:NUDGE_FWD");
+    }
   } else if (event == BTN_LONG_PRESS) {
     Serial.println("[Music] Hold OK -> Returning to Carousel Menu");
     Engine::returnToMenu();
